@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -101,7 +100,7 @@ internal fun SteamBottomBar(
     }
     val colors = MiuixTheme.colorScheme
     val surface = colors.surfaceContainer
-    val dark = isSystemInDarkTheme()
+    val dark = LocalSteamDark.current
     val tint = surface.copy(alpha = if (dark) 0.56f else 0.61f)
     val outline = colors.dividerLine
     val primary = colors.primary

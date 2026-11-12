@@ -34,7 +34,7 @@ enum class Glyph {
     Store, Heart, Chat, User, Search, Filter,
     ChevronRight, ChevronDown, Back, More, Send, Emoji,
     Refresh, Alert, Info, Close, Copy, Bell, Shield, Logout,
-    Users, Check, Plus, Mark, Image, Phone, Pin
+    Users, Check, Plus, Mark, Image, Phone, Pin, Sun, Moon, Qr
 }
 
 @Composable
@@ -57,6 +57,37 @@ fun SteamIcon(
             drawRoundRect(tint, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u, r * u), style = stroke)
 
         when (glyph) {
+            Glyph.Sun -> {
+                circle(12f, 12f, 4f)
+                for (step in 0..7) {
+                    val angle = step * Math.PI / 4
+                    val x = kotlin.math.cos(angle).toFloat()
+                    val y = kotlin.math.sin(angle).toFloat()
+                    line(12 + 7 * x, 12 + 7 * y, 12 + 10 * x, 12 + 10 * y)
+                }
+            }
+            Glyph.Moon -> {
+                val moon = Path().apply {
+                    moveTo(15 * u, 3 * u)
+                    cubicTo(3 * u, 1 * u, 0f, 17 * u, 10 * u, 21 * u)
+                    cubicTo(15 * u, 23 * u, 21 * u, 19 * u, 21 * u, 14 * u)
+                    cubicTo(13 * u, 17 * u, 8 * u, 8 * u, 15 * u, 3 * u)
+                    close()
+                }
+                drawPath(moon, tint, style = stroke)
+            }
+            Glyph.Qr -> {
+                rect(3f, 3f, 7f, 7f, 1f)
+                rect(14f, 3f, 7f, 7f, 1f)
+                rect(3f, 14f, 7f, 7f, 1f)
+                dot(6.5f, 6.5f, 1f)
+                dot(17.5f, 6.5f, 1f)
+                dot(6.5f, 17.5f, 1f)
+                line(14f, 14f, 14f, 21f)
+                line(18f, 14f, 21f, 14f)
+                line(18f, 18f, 21f, 18f)
+                line(21f, 18f, 21f, 21f)
+            }
             Glyph.Pin -> {
                 line(8f, 3f, 16f, 3f); line(9f, 3f, 9f, 10f); line(15f, 3f, 15f, 10f)
                 line(9f, 10f, 6f, 14f); line(6f, 14f, 18f, 14f); line(18f, 14f, 15f, 10f)

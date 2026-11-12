@@ -14,6 +14,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -29,28 +35,47 @@ val Text1: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.
 val Text2: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onSurfaceSecondary
 val Text3: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onSurfaceVariantSummary
 val Accent: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.primary
-val AccentText: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onPrimaryVariant else Color(0xFF185DBE)
+val AccentText: Color @Composable get() = if (LocalSteamDark.current) MiuixTheme.colorScheme.onPrimaryVariant else Color(0xFF185DBE)
 val OnAccent: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onPrimary
 val AccentSoft: Color @Composable @ReadOnlyComposable get() = Accent.copy(alpha = 0.13f)
 val AccentLine: Color @Composable @ReadOnlyComposable get() = Accent.copy(alpha = 0.30f)
 val Danger: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.error
-val DangerText: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFFF9E97) else Color(0xFFB3261E)
+val DangerText: Color @Composable get() = if (LocalSteamDark.current) Color(0xFFFF9E97) else Color(0xFFB3261E)
 val DangerSoft: Color @Composable @ReadOnlyComposable get() = Danger.copy(alpha = 0.10f)
 val SheetScrim: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.windowDimming
 
-val Money: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF7AD99B) else Color(0xFF216E3C)
+val Money: Color @Composable get() = if (LocalSteamDark.current) Color(0xFF7AD99B) else Color(0xFF216E3C)
 val MoneyText: Color @Composable get() = Money
 val MoneySoft: Color @Composable get() = Money.copy(alpha = 0.12f)
 val MoneyLine: Color @Composable get() = Money.copy(alpha = 0.26f)
-val Warn: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFE5BE72) else Color(0xFF865508)
+val Warn: Color @Composable get() = if (LocalSteamDark.current) Color(0xFFE5BE72) else Color(0xFF865508)
 val WarnText: Color @Composable get() = Warn
 val WarnSoft: Color @Composable get() = Warn.copy(alpha = 0.10f)
 val WarnLine: Color @Composable get() = Warn.copy(alpha = 0.20f)
 
+internal val LocalSteamDark = compositionLocalOf { false }
+internal val LocalSteamThemeToggle = compositionLocalOf<() -> Unit> { {} }
+
 @Composable
 fun SteamTheme(content: @Composable () -> Unit) {
-    val controller = remember { ThemeController(ColorSchemeMode.System) }
-    val dark = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val view = LocalView.current
+    val prefs = remember(context) { context.getSharedPreferences("ui", Context.MODE_PRIVATE) }
+    val preference = remember(prefs) { mutableStateOf(prefs.getString("theme", null)) }
+    val dark = when (preference.value) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
+    val controller = remember(dark) { ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light) }
+    SideEffect {
+        val window = (context as? android.app.Activity)?.window
+        if (window != null) {
+            val bars = WindowCompat.getInsetsController(window, view)
+            bars.isAppearanceLightStatusBars = !dark
+            bars.isAppearanceLightNavigationBars = !dark
+        }
+    }
     MiuixTheme(controller = controller) {
         val colors = MiuixTheme.colorScheme
         val styles = MiuixTheme.textStyles
@@ -100,7 +125,16 @@ fun SteamTheme(content: @Composable () -> Unit) {
             labelSmall = styles.footnote2,
         )
         MaterialTheme(colorScheme = materialColors, typography = typography) {
-            CompositionLocalProvider(LocalIndication provides indication, content = content)
+            CompositionLocalProvider(
+                LocalIndication provides indication,
+                LocalSteamDark provides dark,
+                LocalSteamThemeToggle provides {
+                    val next = if (dark) "light" else "dark"
+                    preference.value = next
+                    prefs.edit().putString("theme", next).apply()
+                },
+                content = content
+            )
         }
     }
 }

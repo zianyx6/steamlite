@@ -1,6 +1,7 @@
 package org.steamlite
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +11,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -22,6 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -35,6 +41,13 @@ fun SteamLoginDialogs(steam: SteamConnection) {
     val succeeded by steam.loginSucceeded.collectAsState()
     val phonePending by steam.phoneConfirmationPending.collectAsState()
     val submitting by steam.guardCodeSubmitting.collectAsState()
+    val scanning by steam.qrLogin.collectAsState()
+    if (scanning && !online) {
+        val challenge by steam.qrChallenge.collectAsState()
+        val status by steam.status.collectAsState()
+        SteamQrDialog(challenge, status, steam::cancelLogin)
+        return
+    }
     when (loginDialogState(online, busy, guard, succeeded)) {
         LoginDialogState.GUARD -> SteamGuardDialog(guard, needsCode, steam::submitCode, steam::cancelLogin, phonePending, submitting)
         LoginDialogState.SUCCESS -> {
@@ -42,6 +55,41 @@ fun SteamLoginDialogs(steam: SteamConnection) {
             LoginSuccessDialog { steam.loginSucceeded.value = false }
         }
         LoginDialogState.NONE -> Unit
+    }
+}
+
+@Composable
+private fun SteamQrDialog(challenge: String?, status: String, cancel: () -> Unit) {
+    val qr = remember(challenge) {
+        challenge?.let { url ->
+            val matrix = QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, 512, 512)
+            val pixels = IntArray(matrix.width * matrix.height) { index ->
+                if (matrix[index % matrix.width, index / matrix.width]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+            }
+            android.graphics.Bitmap.createBitmap(
+                pixels, matrix.width, matrix.height, android.graphics.Bitmap.Config.ARGB_8888
+            ).asImageBitmap()
+        }
+    }
+    Dialog(onDismissRequest = cancel, properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn)) {
+        Surface(shape = RoundedCornerShape(26.dp), color = Surface1) {
+            Column(
+                Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Steam 扫码登录", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Text1)
+                Text("用另一台设备打开 Steam 手机应用，在 Steam Guard 中扫码并确认。", color = Text2,
+                    fontSize = 13.sp, textAlign = TextAlign.Center)
+                if (qr != null) {
+                    Image(qr, contentDescription = "Steam 登录二维码", modifier = Modifier.size(216.dp).background(Color.White))
+                } else {
+                    CircularProgressIndicator(Modifier.size(32.dp), color = Accent)
+                }
+                Text(status, fontSize = 12.sp, color = Text3, textAlign = TextAlign.Center)
+                GhostButton("取消", cancel, Modifier.fillMaxWidth())
+            }
+        }
     }
 }
 

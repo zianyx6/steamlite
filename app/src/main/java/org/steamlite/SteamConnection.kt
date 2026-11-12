@@ -193,6 +193,8 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     val voice = SteamVoiceController(client.getHandler(SteamUnifiedMessages::class.java)!!, manager, scope, { owner }, { online.value })
     val busy = MutableStateFlow(false)
     val loginSucceeded = MutableStateFlow(false)
+    val qrLogin = MutableStateFlow(false)
+    val qrChallenge = MutableStateFlow<String?>(null)
     private var interactiveLogin = false
     val needsGuardCode = MutableStateFlow(false)
     val phoneConfirmationPending = MutableStateFlow(false)
@@ -280,6 +282,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                                 override fun getDeviceCode(previousCodeWasIncorrect: Boolean) = requestCode(if (previousCodeWasIncorrect) "验证码错误，请重新输入 Steam Guard" else "输入 Steam Guard 验证码")
                                 override fun getEmailCode(email: String?, previousCodeWasIncorrect: Boolean) = requestCode(if (previousCodeWasIncorrect) "验证码错误，请重新输入邮件验证码" else "输入 Steam 邮件验证码")
                                 override fun acceptDeviceConfirmation(): CompletableFuture<Boolean> {
+                                    if (qrLogin.value) return CompletableFuture.completedFuture(true)
                                     phoneConfirmationPending.value = true
                                     needsGuardCode.value = concurrentGuardSession != null
                                     guard.value = if (needsGuardCode.value) "可在 Steam 手机应用批准登录，也可直接输入令牌码；任一方式验证成功即可登录" else "请在 Steam 官方手机应用确认此次登录，确认后将自动继续"
@@ -287,20 +290,40 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                                 }
                             }
                         }
-                        status.value = "正在请求 Steam 认证，等待 Steam Guard 挑战"
+                        val scanning = qrLogin.value
+                        status.value = if (scanning) "正在获取 Steam 登录二维码" else "正在请求 Steam 认证，等待 Steam Guard 挑战"
                         val result = withTimeout(180000) {
-                            val session = client.authentication.beginAuthSessionViaCredentials(details).await()
-                            activeGuardSession = session
-                            session.allowedConfirmations = preferPhoneApproval(session.allowedConfirmations)
-                            if (supportsConcurrentGuard(session.allowedConfirmations)) concurrentGuardSession = session
-                            try { session.pollingWaitForResult().await() }
-                            finally { clearConcurrentGuard(session) }
+                            if (scanning) {
+                                val session = client.authentication.beginAuthSessionViaQR(details, this).await()
+                                fun showChallenge(url: String) {
+                                    if (active && generation == attempt && qrLogin.value) qrChallenge.value = url
+                                }
+                                session.challengeUrlChanged = object : IChallengeUrlChanged {
+                                    override fun onChanged(session: QrAuthSession) = showChallenge(session.challengeUrl)
+                                }
+                                showChallenge(session.challengeUrl)
+                                status.value = "等待 Steam 手机应用扫码确认"
+                                try { session.pollingWaitForResult(this).await() }
+                                finally { session.challengeUrlChanged = null }
+                            } else {
+                                val session = client.authentication.beginAuthSessionViaCredentials(details).await()
+                                activeGuardSession = session
+                                session.allowedConfirmations = preferPhoneApproval(session.allowedConfirmations)
+                                if (supportsConcurrentGuard(session.allowedConfirmations)) concurrentGuardSession = session
+                                try { session.pollingWaitForResult().await() }
+                                finally { clearConcurrentGuard(session) }
+                            }
                         }
                         ensureActive()
                         if (!active || generation != attempt) return@launch
                         token = result.refreshToken; account = result.accountName
                         this@SteamConnection.password = ""; details.password = null
-                        vault.save(JSONObject().put("account", account).put("token", token).toString())
+                        if (scanning) {
+                            qrChallenge.value = null
+                            status.value = "扫码已确认，正在登录 Steam"
+                        } else {
+                            vault.save(JSONObject().put("account", account).put("token", token).toString())
+                        }
                     }
                     guard.value = ""
                     needsGuardCode.value = false
@@ -311,11 +334,17 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                     val resultCode = (cause as? AuthenticationException)?.result
                     android.util.Log.w("SteamLiteAuth", "Authentication failed: ${cause.javaClass.simpleName}, Steam result=${resultCode ?: "unavailable"}")
                     status.value = if(it is TimeoutCancellationException) "认证超时，请重试" else "认证失败：${resultCode ?: cause.javaClass.simpleName}"
+                    clearQrLogin()
                     clearConcurrentGuard(); active = false; busy.value = false; password = ""; guard.value = ""; needsGuardCode.value = false; code?.cancel(true); code = null; client.disconnect()
                 } }
             }
         }
         manager.subscribe(LoggedOnCallback::class.java) {
+            val scanned = qrLogin.value
+            if (scanned && it.result == EResult.OK) {
+                vault.save(JSONObject().put("account", account).put("token", token).toString())
+            }
+            clearQrLogin()
             busy.value = false
             if (it.result == EResult.OK) {
                 guard.value = ""; needsGuardCode.value = false
@@ -379,6 +408,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         }
         manager.subscribe(DisconnectedCallback::class.java) {
             authenticationJob?.cancel()
+            qrChallenge.value = null
             clearConcurrentGuard()
             readingPeer = null
             if (owner.isBlank()) { remarks.value = emptyMap(); readTimes.clear() }
@@ -391,7 +421,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 return@subscribe
             }
             if (active && token.isNotEmpty()) scope.launch { status.value = "连接中断，正在重连"; delay(minOf(60000L, 2000L shl minOf(retry++, 5))); if (active) connect() }
-            else if (active) { active = false; busy.value = false; watchdog?.cancel(); password = ""; status.value = "连接失败，请重试" }
+            else if (active) { clearQrLogin(); active = false; busy.value = false; watchdog?.cancel(); password = ""; status.value = "连接失败，请重试" }
         }
         scope.launch { while (isActive) { runCatching { manager.runWaitCallbacks(500) }; delay(10) } }
         vault.read()?.let { saved -> runCatching { val json = JSONObject(saved); account = json.getString("account"); token = json.getString("token"); connect() } }
@@ -434,11 +464,31 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     fun login(name: String, pass: String) { if (active) return; if(!authReady) { status.value = "加密组件尚未准备完成，请稍后重试"; return }; probe = false; interactiveLogin = true; loginSucceeded.value = false; guard.value = ""; generation++; account = name.trim(); password = pass; token = ""; connect() }
     fun cancelLogin() {
         if (online.value) return
+        if (qrLogin.value) token = ""
+        clearQrLogin()
         clearConcurrentGuard()
         active = false; generation++; interactiveLogin = false; busy.value = false
         watchdog?.cancel(); authenticationJob?.cancel(); code?.cancel(true); code = null
         password = ""; guard.value = ""; needsGuardCode.value = false; status.value = "登录已取消"
         scope.launch { client.disconnect() }
+    }
+    fun loginWithQr() {
+        if (active || online.value) return
+        probe = false
+        interactiveLogin = true
+        loginSucceeded.value = false
+        guard.value = ""
+        generation++
+        account = ""
+        password = ""
+        token = ""
+        qrLogin.value = true
+        connect()
+    }
+
+    private fun clearQrLogin() {
+        qrChallenge.value = null
+        qrLogin.value = false
     }
     fun resumeSession() {
         if (token.isNotBlank() && !online.value && !busy.value) connect()
@@ -451,11 +501,12 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         watchdog = scope.launch {
             delay(45000)
             if(active && !client.isConnected && generation == attempt) {
+                clearQrLogin()
                 active = false; busy.value = false; password = ""; status.value = "Steam 连接超时，请检查网络后重试"; client.disconnect()
             }
         }
         scope.launch {
-            runCatching { client.connect(ServerRecord.createWebSocketServer(SmartCMServerList.defaultServerWebSocket)) }.onFailure { active = false; busy.value = false; password = ""; status.value = "Steam 连接异常（${it.javaClass.simpleName}）" }
+            runCatching { client.connect(ServerRecord.createWebSocketServer(SmartCMServerList.defaultServerWebSocket)) }.onFailure { clearQrLogin(); active = false; busy.value = false; password = ""; status.value = "Steam 连接异常（${it.javaClass.simpleName}）" }
         }
     }
     private val personaGameNames = java.util.concurrent.ConcurrentHashMap<Int, String>()

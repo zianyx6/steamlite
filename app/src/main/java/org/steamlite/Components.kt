@@ -261,7 +261,7 @@ fun SearchField(
 }
 
 @Composable
-fun IconSquare(glyph: Glyph, onClick: () -> Unit, tint: Color = Text2, dot: Boolean = false) {
+fun IconSquare(glyph: Glyph, onClick: () -> Unit, tint: Color = Text2, dot: Boolean = false, label: String? = null) {
     val shape = RoundedCornerShape(13.dp)
     Box(
         Modifier
@@ -269,7 +269,7 @@ fun IconSquare(glyph: Glyph, onClick: () -> Unit, tint: Color = Text2, dot: Bool
             .clip(shape)
             .background(Surface1)
             .border(1.dp, Line, shape)
-            .clickable(onClick = onClick),
+            .clickable(onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         SteamIcon(glyph, 19.dp, tint)

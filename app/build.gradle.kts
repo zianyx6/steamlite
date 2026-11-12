@@ -12,7 +12,7 @@ kotlin {
 android {
     namespace = "org.steamlite"
     compileSdk = 37
-    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 102; versionName = "1.0.2"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
+    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 103; versionName = "1.0.3"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
     val releaseKey = System.getenv("STEAMLITE_KEYSTORE")
     if (!releaseKey.isNullOrBlank()) signingConfigs.create("distribution") {
         storeFile = file(releaseKey)
@@ -40,6 +40,7 @@ androidComponents {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("org.jsoup:jsoup:1.24.1")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.activity:activity-compose:1.13.0")

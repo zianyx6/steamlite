@@ -68,7 +68,16 @@ fun MeScreen(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
         ) {
-            item { PageHeader("我的") }
+            item {
+                PageHeader("我的") {
+                    val dark = LocalSteamDark.current
+                    IconSquare(
+                        if (dark) Glyph.Sun else Glyph.Moon,
+                        LocalSteamThemeToggle.current,
+                        label = if (dark) "切换到浅色模式" else "切换到深色模式"
+                    )
+                }
+            }
 
             if (online) {
                 item {
@@ -289,6 +298,8 @@ private fun LoginCard(model: LiteModel) {
         }
 
         Spacer(Modifier.height(12.dp))
+        GhostButton("Steam 扫码登录", model.steam::loginWithQr, Modifier.fillMaxWidth(), enabled = !busy, glyph = Glyph.Qr)
+        Spacer(Modifier.height(8.dp))
         GhostButton("检测 Steam 连接", { model.steam.probeConnection() }, Modifier.fillMaxWidth(), enabled = !busy, glyph = Glyph.Refresh)
     }
 }
