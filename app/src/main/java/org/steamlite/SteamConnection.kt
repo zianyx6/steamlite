@@ -299,7 +299,9 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                                     if (active && generation == attempt && qrLogin.value) qrChallenge.value = url
                                 }
                                 session.challengeUrlChanged = object : IChallengeUrlChanged {
-                                    override fun onChanged(session: QrAuthSession) = showChallenge(session.challengeUrl)
+                                    override fun onChanged(qrAuthSession: QrAuthSession?) {
+                                        qrAuthSession?.challengeUrl?.let(::showChallenge)
+                                    }
                                 }
                                 showChallenge(session.challengeUrl)
                                 status.value = "等待 Steam 手机应用扫码确认"
