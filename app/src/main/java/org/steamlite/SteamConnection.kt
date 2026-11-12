@@ -282,7 +282,6 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                                 override fun getDeviceCode(previousCodeWasIncorrect: Boolean) = requestCode(if (previousCodeWasIncorrect) "验证码错误，请重新输入 Steam Guard" else "输入 Steam Guard 验证码")
                                 override fun getEmailCode(email: String?, previousCodeWasIncorrect: Boolean) = requestCode(if (previousCodeWasIncorrect) "验证码错误，请重新输入邮件验证码" else "输入 Steam 邮件验证码")
                                 override fun acceptDeviceConfirmation(): CompletableFuture<Boolean> {
-                                    if (qrLogin.value) return CompletableFuture.completedFuture(true)
                                     phoneConfirmationPending.value = true
                                     needsGuardCode.value = concurrentGuardSession != null
                                     guard.value = if (needsGuardCode.value) "可在 Steam 手机应用批准登录，也可直接输入令牌码；任一方式验证成功即可登录" else "请在 Steam 官方手机应用确认此次登录，确认后将自动继续"
@@ -295,18 +294,19 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                         val result = withTimeout(180000) {
                             if (scanning) {
                                 val session = client.authentication.beginAuthSessionViaQR(details, this).await()
-                                fun showChallenge(url: String) {
-                                    if (active && generation == attempt && qrLogin.value) qrChallenge.value = url
-                                }
-                                session.challengeUrlChanged = object : IChallengeUrlChanged {
-                                    override fun onChanged(qrAuthSession: QrAuthSession?) {
-                                        qrAuthSession?.challengeUrl?.let(::showChallenge)
-                                    }
-                                }
-                                showChallenge(session.challengeUrl)
+                                ensureActive()
+                                qrChallenge.value = session.challengeUrl
                                 status.value = "等待 Steam 手机应用扫码确认"
-                                try { session.pollingWaitForResult(this).await() }
-                                finally { session.challengeUrlChanged = null }
+                                // Steam reports seconds. JavaSteam 1.8.0's polling loop delays in milliseconds.
+                                val intervalMillis = (session.pollingInterval * 1000).toLong().coerceAtLeast(1000L)
+                                var approval: AuthPollResult?
+                                do {
+                                    delay(intervalMillis)
+                                    approval = session.pollAuthSessionStatus(this).await()
+                                    ensureActive()
+                                    if (approval == null) qrChallenge.value = session.challengeUrl
+                                } while (approval == null)
+                                approval
                             } else {
                                 val session = client.authentication.beginAuthSessionViaCredentials(details).await()
                                 activeGuardSession = session
