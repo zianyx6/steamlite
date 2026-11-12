@@ -25,6 +25,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,16 +89,18 @@ fun ChatHubScreen(model: LiteModel, openPeerId: Long?, onOpenPeer: (Long?) -> Un
     val online by model.steam.online.collectAsState()
     val owner = model.steam.owner
 
+    var page by rememberSaveable(owner) { mutableIntStateOf(1) }
+    val pageStates = key(owner) { rememberSaveableStateHolder() }
+    val swipeMenus = remember(owner) { FriendSwipeState() }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, page) { swipeMenus.clear() }
+    var search by rememberSaveable(owner) { mutableStateOf("") }
+
     val peer = openPeerId?.let { id -> people.firstOrNull { it.id == id } ?: FriendRow(id, id.toString(), "", null) }
     if (peer != null) {
         ConversationScreen(model, peer) { onOpenPeer(null) }
         return
     }
-
-    var page by remember(owner) { mutableIntStateOf(1) }
-    val swipeMenus = remember(owner) { FriendSwipeState() }
-    LaunchedEffect(page) { swipeMenus.clear() }
-    var search by rememberSaveable { mutableStateOf("") }
 
     val refreshScope = rememberCoroutineScope()
     var refreshingHub by remember { mutableStateOf(false) }
@@ -114,7 +117,7 @@ fun ChatHubScreen(model: LiteModel, openPeerId: Long?, onOpenPeer: (Long?) -> Un
     }) { Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp)) {
             PageHeader("消息")
-            UnderlineTabs(listOf("好友", "会话", "群组"), page, { page = it }, unread)
+            MessageTabs(listOf("好友", "会话", "群组"), page, { page = it }, unread)
             Spacer(Modifier.height(12.dp))
             SearchField(
                 value = search,
@@ -135,11 +138,17 @@ fun ChatHubScreen(model: LiteModel, openPeerId: Long?, onOpenPeer: (Long?) -> Un
             }
         }
 
-        PageMotion(page, Modifier.weight(1f)) { CompositionLocalProvider(LocalFriendSwipeState provides swipeMenus) { when (page) {
-            0 -> FriendsPage(model, people, search, online) { onOpenPeer(it) }
-            1 -> ConversationsPage(model, people, search, online) { onOpenPeer(it) }
-            else -> GroupsPage(model, online, search)
-        } } }
+        Box(Modifier.weight(1f)) {
+            CompositionLocalProvider(LocalFriendSwipeState provides swipeMenus) {
+                pageStates.SaveableStateProvider(page) {
+                    when (page) {
+                        0 -> FriendsPage(model, people, search, online) { onOpenPeer(it) }
+                        1 -> ConversationsPage(model, people, search, online) { onOpenPeer(it) }
+                        else -> GroupsPage(model, online, search)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -157,9 +166,8 @@ private fun FriendsPage(
     val prefs = remember { context.getSharedPreferences("friend-layout", Context.MODE_PRIVATE) }
     val pins by model.steam.pinnedFriends.collectAsState()
     val pinStatus by model.steam.favoritesStatus.collectAsState()
-    val titlesLoading by model.steam.gameTitlesLoading.collectAsState()
-    val missingTitles = people.filter { it.playing && it.gameAppId > 0 && it.game == "游戏名称暂未获取" }.distinctBy(::friendGameKey).size
-    LaunchedEffect(owner, online) { if(online) { while(true) { runCatching { model.steam.refreshFavorites() }; runCatching { model.steam.refreshFriendRemarks() }; delay(30000) } } }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, owner, online) { if(active && online) { while(true) { runCatching { model.steam.refreshFavorites() }; runCatching { model.steam.refreshFriendRemarks() }; delay(30000) } } }
     var collapsed by remember(owner) { mutableStateOf(readStringSet(prefs, "folded:$owner")) }
 
     fun toggleSection(key: String) {
@@ -167,27 +175,30 @@ private fun FriendsPage(
         prefs.edit().putStringSet("folded:$owner", collapsed).apply()
     }
 
-    val filtered = people.filter { it.name.contains(search, true) || it.remark.contains(search, true) || it.state.contains(search, true) }
-    val pinned = filtered.filter { it.id.toString() in pins }
-    val rest = filtered.filter { it.id.toString() !in pins }
-    val playing = rest.filter { it.playing }
-    val away = rest.filter { !it.playing && presenceOf(it) == Presence.Away }
-    val idle = rest.filter { !it.playing && it.available && presenceOf(it) != Presence.Away }
-    val offline = rest.filter { !it.available && !it.playing }
+    val sections = remember(people, search, pins) {
+        val filtered = people.filter { it.name.contains(search, true) || it.remark.contains(search, true) || it.state.contains(search, true) }
+        val (pinned, rest) = filtered.partition { it.id.toString() in pins }
+        val playing = rest.filter { it.playing }
+        val away = rest.filter { !it.playing && presenceOf(it) == Presence.Away }
+        val idle = rest.filter { !it.playing && it.available && presenceOf(it) != Presence.Away }
+        val offline = rest.filter { !it.available && !it.playing }
 
-    val byGame = playing.groupBy(::friendGameKey)
-    val soloPlayers = byGame.values.filter { it.size == 1 }.flatten().sortedBy { it.name.lowercase() }
-    // Multi-player groups collapse; solo players remain plain friend rows.
-    val sections = (listOf(Triple("置顶", pinned, "pin")) + byGame.filterValues { it.size >= 2 }.map { (gameKey, rows) -> Triple(rows.first().game.ifBlank { "游戏名称暂未获取" }, rows, "play:$gameKey") }.sortedWith(compareByDescending<Triple<String, List<FriendRow>, String>> { it.second.size }.thenBy { it.first.lowercase() }) + listOf(
-        Triple("其他游戏", soloPlayers, "solo"),
-        Triple("在线", idle, "on"),
-        Triple("暂离", away, "away"),
-        Triple("离线", offline, "off")
-    )).filter { it.second.isNotEmpty() }
+        val byGame = playing.groupBy(::friendGameKey)
+        val soloPlayers = byGame.values.filter { it.size == 1 }.flatten().sortedBy { it.name.lowercase() }
+        val games = byGame.filterValues { it.size >= 2 }
+            .map { (gameKey, rows) -> Triple(rows.first().game.ifBlank { "游戏名称暂未获取" }, rows, "play:$gameKey") }
+            .sortedWith(compareByDescending<Triple<String, List<FriendRow>, String>> { it.second.size }.thenBy { it.first.lowercase() })
+        (listOf(Triple("置顶", pinned, "pin")) + games + listOf(
+            Triple("其他游戏", soloPlayers, "solo"),
+            Triple("在线", idle, "on"),
+            Triple("暂离", away, "away"),
+            Triple("离线", offline, "off")
+        )).filter { it.second.isNotEmpty() }
+    }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)) {
         if(pinStatus.contains("失败") || pinStatus.contains("未确认")) item { MetaLine(pinStatus, Glyph.Info) }
-        if (filtered.isEmpty()) {
+        if (sections.isEmpty()) {
             item {
                 EmptyState(
                     glyph = if (people.isEmpty()) Glyph.Users else Glyph.Search,
@@ -304,23 +315,27 @@ private fun ConversationsPage(
     val sessions by model.steam.recentSessions.collectAsState()
     val pins by model.steam.pinnedFriends.collectAsState()
     val status by model.steam.recentStatus.collectAsState()
-    LaunchedEffect(online) { if (online) model.steam.refreshRecentSessions() }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, online) { if (active && online) model.steam.refreshRecentSessions() }
 
-    val local = conversations.associateBy { it.peer }
-    val recent = (sessions + conversations.map { RecentSession(it.peer, it.time, 0) })
-        .groupBy { it.peer }
-        .map { (_, rows) -> rows.maxBy { it.time } }
-        .sortedByDescending { it.time }
-        .filter { session ->
-            val friend = people.firstOrNull { it.id == session.peer }
-            search.isBlank() ||
-                friend?.name?.contains(search, true) == true ||
-                friend?.remark?.contains(search, true) == true ||
-                session.peer.toString().contains(search) ||
-                local[session.peer]?.text?.contains(search, true) == true
-        }
+    val local = remember(conversations) { conversations.associateBy { it.peer } }
+    val peopleById = remember(people) { people.associateBy { it.id } }
+    val recent = remember(sessions, conversations, local, peopleById, search) {
+        (sessions + conversations.map { RecentSession(it.peer, it.time, 0) })
+            .groupBy { it.peer }
+            .map { (_, rows) -> rows.maxBy { it.time } }
+            .sortedByDescending { it.time }
+            .filter { session ->
+                val friend = peopleById[session.peer]
+                search.isBlank() ||
+                    friend?.name?.contains(search, true) == true ||
+                    friend?.remark?.contains(search, true) == true ||
+                    session.peer.toString().contains(search) ||
+                    local[session.peer]?.text?.contains(search, true) == true
+            }
+    }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)) {
         if (status.isNotEmpty() && (status.contains("失败") || status.contains("正在"))) {
             item {
                 StatusBanner(
@@ -340,7 +355,7 @@ private fun ConversationsPage(
         }
         items(recent, key = { it.peer }) { session ->
             val message = local[session.peer]
-            val friend = people.firstOrNull { it.id == session.peer }
+            val friend = peopleById[session.peer]
                 ?: FriendRow(session.peer, session.peer.toString(), "", null)
             val preview = if (message != null && message.time >= session.time) {
                 ChatContent.preview(message.text).ifBlank { "[贴纸]" }
@@ -369,7 +384,7 @@ private fun ConversationsPage(
                                     session.unread.toString(),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF06121F),
+                                    color = OnAccent,
                                     modifier = Modifier.padding(horizontal = 5.dp)
                                 )
                             }
@@ -628,7 +643,7 @@ private fun ChatBubble(
                 Spacer(Modifier.height(3.dp))
             }
             CompositionLocalProvider(
-                LocalContentColor provides (if (outgoing) Color(0xFFE4EFFF) else Text1)
+                LocalContentColor provides Text1
             ) {
                 RichMessage(text)
             }
@@ -637,7 +652,7 @@ private fun ChatBubble(
                 Text(
                     footer,
                     fontSize = 10.sp,
-                    color = if (footer.contains("失败") || footer.contains("未知")) Color(0xFFFF8686) else Text3,
+                    color = if (footer.contains("失败") || footer.contains("未知")) DangerText else Text3,
                     modifier = Modifier.align(if (outgoing) Alignment.End else Alignment.Start)
                 )
             }
@@ -755,7 +770,7 @@ fun MessageComposer(model: LiteModel, key: String, enabled: Boolean, send: (Stri
                 Box(Modifier.size(41.dp).clip(CircleShape).background(if(enabled) Accent else Surface3)
                     .semantics { contentDescription = "发送消息" }
                     .clickable(enabled = enabled) { val submitted = draft; send(submitted) { if(draft == submitted) draft = "" } }, contentAlignment = Alignment.Center) {
-                    SteamIcon(Glyph.Send, 19.dp, if(enabled) Color(0xFF04121F) else Text3)
+                    SteamIcon(Glyph.Send, 19.dp, if(enabled) OnAccent else Text3)
                 }
             }
         }
@@ -866,7 +881,7 @@ private fun PickerTab(label: String, count: Int, active: Boolean, onClick: () ->
         Text(
             count.toString(),
             fontSize = 10.sp,
-            color = if (active) Color(0x99C9E4FF) else Text3
+            color = if (active) AccentText else Text3
         )
     }
 }
@@ -894,8 +909,9 @@ private fun GroupsPage(model: LiteModel, online: Boolean, search: String) {
     val status by repo.groupStatus.collectAsState()
     var groupId by rememberSaveable(model.steam.owner) { mutableStateOf<Long?>(null) }
     var channelId by rememberSaveable(model.steam.owner) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(online) { if (online) repo.refreshGroups() }
-    DisposableEffect(Unit) { onDispose { repo.leaveChannel() } }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, online) { if (active && online) repo.refreshGroups() }
+    DisposableEffect(active) { onDispose { if (active) repo.leaveChannel() } }
 
     val group = groups.firstOrNull { it.id == groupId }
     val failed = status.contains("失败")
@@ -903,7 +919,7 @@ private fun GroupsPage(model: LiteModel, online: Boolean, search: String) {
     Row(Modifier.fillMaxSize()) {
         if(groups.isNotEmpty()) LazyColumn(
             Modifier.width(68.dp).fillMaxHeight().background(Surface1),
-            contentPadding = PaddingValues(vertical = 10.dp, horizontal = 8.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 10.dp + LocalFloatingNavigationPadding.current),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -930,8 +946,8 @@ private fun GroupsPage(model: LiteModel, online: Boolean, search: String) {
             GroupChatView(model, group, channel, online, { channelId = it }, { groupId = null; channelId = null })
         }
         else -> {
-            val visible = groups.filter { search.isBlank() || it.name.contains(search, true) }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)) {
+            val visible = remember(groups, search) { groups.filter { search.isBlank() || it.name.contains(search, true) } }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)) {
                 if (status.isNotEmpty() && (failed || status.contains("正在"))) {
                     item {
                         StatusBanner(status, if (failed) Tone.Warn else Tone.Info)
@@ -1052,7 +1068,8 @@ private fun GroupChatView(
     back: () -> Unit
 ) {
     val repo = model.community
-    BackHandler(onBack = back)
+    val active = LocalRootTabActive.current
+    BackHandler(enabled = active, onBack = back)
     val scope = rememberCoroutineScope()
     val messages by repo.groupMessages.collectAsState()
     val status by repo.channelStatus.collectAsState()
@@ -1061,8 +1078,8 @@ private fun GroupChatView(
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
 
-    LaunchedEffect(group.id, channel?.id, online) {
-        if (online && channel != null) {
+    LaunchedEffect(active, group.id, channel?.id, online) {
+        if (active && online && channel != null) {
             repo.selectChannel(group.id, channel.id)
             while (true) {
                 delay(30000)
@@ -1071,7 +1088,7 @@ private fun GroupChatView(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(bottom = LocalFloatingNavigationPadding.current)) {
         Row(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -1156,7 +1173,7 @@ private fun FriendActionSheet(name: String, pinned: Boolean, onTogglePin: () -> 
     ModalBottomSheet(
         onDismissRequest = onClose,
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {

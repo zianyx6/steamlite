@@ -32,7 +32,7 @@ class StoreRepository(private val dao: CacheDao) {
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { cached?.let { Triple(it.body, true, it.time) } ?: throw e }
     }
-    suspend fun featured(refresh: Boolean): StoreResult {
+    suspend fun featured(refresh: Boolean): StoreResult = withContext(Dispatchers.Default) {
         val (body, cached, time) = fetch("https://store.steampowered.com/api/featuredcategories?cc=pk&l=schinese", refresh)
         val items = JSONObject(body).optJSONObject("specials")?.optJSONArray("items") ?: error("Steam 折扣数据不可用")
         val games = (0 until items.length()).map { index ->
@@ -44,7 +44,7 @@ class StoreRepository(private val dao: CacheDao) {
             Game(item.getInt("id"), item.getString("name"), image, "$currency %.2f".format(cents / 100.0), item.optInt("discount_percent"), if(original > cents) "$currency %.2f".format(original / 100.0) else "", if(currency == "USD") cents else null)
         }.filter { it.discount > 0 }.distinctBy { it.id }
         if(!cached) games.forEach { game -> game.cents?.let { observations.record(game.id, it, time, "Steam featuredcategories · PK · USD") } }
-        return StoreResult(games, cached, time)
+        StoreResult(games, cached, time)
     }
     suspend fun search(query: String, refresh: Boolean): StoreResult {
         val (body, cached, time) = fetch("https://store.steampowered.com/api/storesearch/?term=${URLEncoder.encode(query, "UTF-8")}&l=schinese&cc=pk", refresh)
@@ -55,7 +55,7 @@ class StoreRepository(private val dao: CacheDao) {
             Game(item.getInt("id"), item.getString("name"), item.optString("tiny_image"), if (price == null) "价格不可用" else "$currency %.2f".format(final / 100.0), if (initial > 0) ((initial - final) * 100 / initial) else 0, if (initial > final) "$currency %.2f".format(initial / 100.0) else "", if(currency == "USD") final.toLong() else null)
         }, cached, time)
     }
-    suspend fun searchPage(query: String, start: Int, options: StoreSearchOptions, refresh: Boolean): StorePage {
+    suspend fun searchPage(query: String, start: Int, options: StoreSearchOptions, refresh: Boolean): StorePage = withContext(Dispatchers.Default) {
         require(start >= 0)
         val term = URLEncoder.encode(query, "UTF-8")
         val url = "https://store.steampowered.com/search/results/?term=$term&start=$start&count=20&infinite=1&cc=pk&l=schinese&sort_by=${URLEncoder.encode(options.order,"UTF-8")}&category1=${options.category}&specials=${if(options.discountOnly) "1" else ""}"
@@ -64,14 +64,14 @@ class StoreRepository(private val dao: CacheDao) {
         check(json.optInt("success") == 1 || json.optBoolean("success")) { "Steam 搜索返回失败" }
         val games = StoreSearchParser.games(json.optString("results_html"))
         if(!cached) games.forEach { game -> game.cents?.let { observations.record(game.id, it, time, "Steam search · PK · USD") } }
-        return StorePage(games, json.optInt("total_count"), start + 20, cached, time)
+        StorePage(games, json.optInt("total_count"), start + 20, cached, time)
     }
-    suspend fun details(id: Int): JSONObject {
+    suspend fun details(id: Int): JSONObject = withContext(Dispatchers.Default) {
         val (body, cached, time) = fetch("https://store.steampowered.com/api/appdetails?appids=$id&cc=pk&l=schinese", false)
         val root = JSONObject(body).getJSONObject(id.toString()); check(root.optBoolean("success")) { "详情不可用" }
         val data = root.getJSONObject("data"); val price = data.optJSONObject("price_overview")
         if(!cached && price?.optString("currency") == "USD" && price.has("final")) observations.record(id, price.getLong("final"), time, "Steam appdetails · PK · USD")
-        return data
+        data
     }
     suspend fun wishlist(steamId: String): List<Int> {
         require(steamId.matches(Regex("[0-9]{17}"))) { "请输入 SteamID64" }

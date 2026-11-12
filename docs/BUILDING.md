@@ -2,9 +2,10 @@
 
 ## 环境
 
-- JDK 17
-- Android SDK Platform 35、Build Tools 35.0.0
-- Gradle 8.9（使用仓库 Wrapper）
+- JDK 21
+- Android SDK Platform 37（`platforms;android-37.0`）、Build Tools 36.0.0
+- Gradle 9.9.1（使用仓库 Wrapper）、Android Gradle Plugin 9.5.1
+- Kotlin / Compose Compiler 2.4.21、KSP 2.3.13
 - 最低 Android API 26；目标 API 34
 
 ```sh

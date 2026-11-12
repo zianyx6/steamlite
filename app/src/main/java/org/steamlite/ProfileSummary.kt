@@ -50,7 +50,8 @@ fun MeScreen(
     val context = LocalContext.current
     val appVersion = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     var aboutSheet by remember { mutableStateOf(false) }
-    LaunchedEffect(online, model.steam.owner) { if (online && stats == null) repo.refreshLibrary() }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, online, model.steam.owner) { if (active && online && stats == null) repo.refreshLibrary() }
 
     val owner = model.steam.owner
     val name = model.steam.personaName().ifBlank { "我的 Steam" }
@@ -65,7 +66,7 @@ fun MeScreen(
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
         ) {
             item { PageHeader("我的") }
 
@@ -84,7 +85,7 @@ fun MeScreen(
                                 name.take(1),
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFB9DAFF)
+                                color = AccentText
                             )
                             if (selfAvatar.isNotBlank()) {
                                 AsyncImage(

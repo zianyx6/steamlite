@@ -87,11 +87,11 @@ fun EmoteInput(
         }
     }
 
+    val textColor = Text1.toArgb()
     AndroidView(modifier = modifier, factory = { ctx ->
         ChatEditText(ctx).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setPadding(0, 0, 0, 0)
-            setTextColor(Text1.toArgb())
             textSize = 13.5f
             maxLines = 4
             imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
@@ -108,6 +108,7 @@ fun EmoteInput(
         }
     }, update = { view ->
         editor = view
+        if (view.currentTextColor != textColor) view.setTextColor(textColor)
         if (view.text.toString() != value) {
             view.setText(value)
             view.setSelection(value.length)

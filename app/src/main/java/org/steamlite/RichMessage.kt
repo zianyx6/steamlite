@@ -38,11 +38,12 @@ import java.io.ByteArrayOutputStream
     val inlines = remember(parts) { parts.filterIsInstance<ChatPart.Emote>().associate { e -> e.name to InlineTextContent(Placeholder(25.sp, 25.sp, PlaceholderVerticalAlign.Center)) {
         SteamImage(ChatContent.emoteUrls(e.name), "表情加载失败，点击重试", Modifier.fillMaxSize())
     } } }
-    val annotated = remember(parts) { buildAnnotatedString {
+    val linkColor = AccentText
+    val annotated = remember(parts, linkColor, context) { buildAnnotatedString {
         parts.forEach { part -> when(part) {
             is ChatPart.Plain -> append(part.text)
             is ChatPart.Emote -> appendInlineContent(part.name, ":${part.name}:")
-            is ChatPart.Link -> withLink(LinkAnnotation.Url(part.url, TextLinkStyles(style = SpanStyle(color = SteamBlue)), LinkInteractionListener { openSteamLink(context, part.url) })) { append(part.label) }
+            is ChatPart.Link -> withLink(LinkAnnotation.Url(part.url, TextLinkStyles(style = SpanStyle(color = linkColor)), LinkInteractionListener { openSteamLink(context, part.url) })) { append(part.label) }
             is ChatPart.Image -> append("\n")
         } }
     } }

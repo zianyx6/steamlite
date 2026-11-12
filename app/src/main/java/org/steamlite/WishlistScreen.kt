@@ -13,10 +13,10 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,41 +40,43 @@ fun WishlistScreen(model: LiteModel) {
 
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
-    var query by remember { mutableStateOf("") }
-    var sort by remember { mutableIntStateOf(0) }
-    var filter by remember { mutableIntStateOf(0) }
-    var shown by remember { mutableIntStateOf(40) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var sort by rememberSaveable { mutableIntStateOf(0) }
+    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var shown by rememberSaveable(query, sort, filter) { mutableIntStateOf(40) }
     var sortSheet by remember { mutableStateOf(false) }
     var actionFor by remember { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(online, model.steam.owner) { if (online) repository.refresh() }
-    LaunchedEffect(query, sort, filter) { shown = 40 }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, online, model.steam.owner) { if (active && online) repository.refresh() }
 
     val term = query.trim()
     val ids = snapshot?.ids.orEmpty()
-    val filtered = ids.filter { id ->
-        val g = games[id]
-        (term.isBlank() || id.toString().contains(term) || g?.name?.contains(term, ignoreCase = true) == true) &&
-            when (filter) {
-                1 -> (g?.discount ?: 0) > 0
-                2 -> g?.coming == true
-                3 -> g?.loaded == true && g.cents == null && !g.coming
-                else -> true
-            }
+    val ordered = remember(ids, games, term, filter, sort) {
+        val filtered = ids.filter { id ->
+            val g = games[id]
+            (term.isBlank() || id.toString().contains(term) || g?.name?.contains(term, ignoreCase = true) == true) &&
+                when (filter) {
+                    1 -> (g?.discount ?: 0) > 0
+                    2 -> g?.coming == true
+                    3 -> g?.loaded == true && g.cents == null && !g.coming
+                    else -> true
+                }
+        }
+        when (sort) {
+            1 -> filtered.sortedByDescending { games[it]?.discount ?: -1 }
+            2 -> filtered.sortedBy { games[it]?.cents ?: Long.MAX_VALUE }
+            3 -> filtered.sortedByDescending { games[it]?.release ?: 0 }
+            else -> filtered
+        }
     }
-    val ordered = when (sort) {
-        1 -> filtered.sortedByDescending { games[it]?.discount ?: -1 }
-        2 -> filtered.sortedBy { games[it]?.cents ?: Long.MAX_VALUE }
-        3 -> filtered.sortedByDescending { games[it]?.release ?: 0 }
-        else -> filtered
-    }
-    val discountCount = ids.count { (games[it]?.discount ?: 0) > 0 }
+    val discountCount = remember(ids, games) { ids.count { (games[it]?.discount ?: 0) > 0 } }
     val syncedAt = snapshot?.time ?: pricesUpdatedAt
 
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
         ) {
             item {
                 PageHeader("我的愿望单")
@@ -270,7 +272,7 @@ private fun SortSheet(current: Int, onPick: (Int) -> Unit) {
     ModalBottomSheet(
         onDismissRequest = { onPick(current) },
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {
@@ -304,7 +306,7 @@ private fun GameActionSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {

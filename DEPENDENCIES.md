@@ -18,6 +18,8 @@
 - JavaSteam 1.8.0：MIT。传递依赖包括 Ktor、OkHttp、protobuf、commons-lang3（Apache-2.0）和 Kotlin。须随发布保留 notices。
 - OkHttp（声明 4.12.0，JavaSteam 传递版本可能使最终解析升级）：Apache-2.0。
 - Coil 2.7.0：Apache-2.0。
+- Miuix UI 0.9.4：Apache-2.0，用于 Compose 主题和基础组件。
+- Backdrop 2.0.1：Apache-2.0，用于悬浮导航栏的实时背景折射。
 - 平台 Android Keystore、JSONObject：Android 平台组件。
 
 本清单不是已完成的全量传递许可证审计。正式发布前保存 Gradle resolved dependency report，附带所有适用 LICENSE / NOTICE，检查漏洞、版本和 Android 适配。当前没有抓取 SteamDB 价格数据，只提供浏览器链接；没有接入第三方账号代理。

@@ -110,7 +110,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
     ModalBottomSheet(
         onDismissRequest = { model.detail = null },
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {

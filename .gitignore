@@ -11,6 +11,7 @@ local.properties
 *.apk
 *.aab
 .idea/
+/.vscode/settings.json
 
 # Local development records and machine-specific build helper.
 /verification/

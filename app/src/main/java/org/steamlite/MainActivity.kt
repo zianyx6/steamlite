@@ -6,15 +6,19 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,11 +27,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
+import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
+
+internal val LocalRootTabActive = compositionLocalOf { true }
 
 class LiteModel(app: Application) : AndroidViewModel(app) {
     val db = Room.databaseBuilder(app, LiteDatabase::class.java, "steam-lite.db").build()
@@ -139,6 +147,7 @@ class MainActivity : ComponentActivity() {
     private val model get() = (application as LiteApplication).model
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         PublicImages.install(this)
         if(intent.getBooleanExtra("open_chat", false)) model.openChatRequests++
         setContent { SteamTheme { LiteApp(model) } }
@@ -156,37 +165,84 @@ class MainActivity : ComponentActivity() {
 fun LiteApp(model: LiteModel = viewModel()) {
     val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { context.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().remove("nav-order").remove("home-tab").apply() }
+    var visitedTabs by remember { mutableIntStateOf(1 shl tab) }
+    val pageStates = rememberSaveableStateHolder()
     var peerId by rememberSaveable { mutableStateOf<Long?>(null) }
     var statusSheet by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
-    val status by model.steam.status.collectAsState()
     val online by model.steam.online.collectAsState()
-    val unreadSessions by model.steam.recentSessions.collectAsState()
     fun open(url: String) { openSteamLink(context, url) }
+    fun selectTab(index: Int) {
+        if (index == tab) return
+        peerId = null
+        visitedTabs = visitedTabs or (1 shl index)
+        tab = index
+    }
 
     LaunchedEffect(online) { if (online) context.startForegroundService(Intent(context, ConnectionService::class.java)) }
     LaunchedEffect(online) { if (!online && model.steam.owner.isBlank()) model.wishlist.clearVisible() }
-    LaunchedEffect(tab) { if (tab != 2) peerId = null }
 
-    val inChat = tab == 2 && peerId != null
+    val inChat by remember { derivedStateOf { tab == 2 && peerId != null } }
 
     CompositionLocalProvider(LocalSnackbar provides snackbar) {
-        Scaffold(
+        MiuixScaffold(
             containerColor = Bg,
-            contentColor = Text1,
-            snackbarHost = { SnackbarHost(snackbar) { data -> SteamSnackbar(data) } },
-            bottomBar = { if (!inChat) SteamBottomBar(tab, unreadSessions.any { it.unread > 0 }) { tab = it } }
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-                if (!online) OfflineBar(status) { statusSheet = true }
-                PageMotion(tab, Modifier.weight(1f)) { when (tab) {
-                    0 -> StoreScreen(model) { tab = 1 }
-                    1 -> WishlistScreen(model)
-                    2 -> ChatHubScreen(model, peerId) { peerId = it }
-                    4 -> FriendActivityScreen(model)
-                    else -> MeScreen(model) { statusSheet = true }
-                } }
+            val density = LocalDensity.current
+            val ime = WindowInsets.ime
+            val imeVisible by remember(ime, density, padding) {
+                derivedStateOf { ime.getBottom(density) > with(density) { padding.calculateBottomPadding().roundToPx() } }
+            }
+            val showNavigation = !inChat && !imeVisible
+            val backdrop = rememberNavigationBackdrop()
+            val capture = showNavigation && isRuntimeShaderSupported()
+            val background = Bg
+            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+                val pageLayer = if (capture) backdrop.capture else Modifier
+                Column(Modifier.fillMaxSize().then(pageLayer).background(background)) {
+                    if (!online) {
+                        val status by model.steam.status.collectAsState()
+                        OfflineBar(status) { statusSheet = true }
+                    }
+                    val pages = remember(visitedTabs) { (0..4).filter { visitedTabs and (1 shl it) != 0 } }
+                    Layout(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        content = {
+                            pages.forEach { index ->
+                                key(index) {
+                                    pageStates.SaveableStateProvider(index) {
+                                        val active by remember { derivedStateOf { index == tab } }
+                                        val pagePadding = if (active && !showNavigation) 0.dp else FloatingNavigationSpace
+                                        CompositionLocalProvider(
+                                            LocalRootTabActive provides active,
+                                            LocalFloatingNavigationPadding provides pagePadding,
+                                        ) {
+                                            Box(Modifier.fillMaxSize()) {
+                                                when (index) {
+                                                    0 -> StoreScreen(model) { selectTab(1) }
+                                                    1 -> WishlistScreen(model)
+                                                    2 -> ChatHubScreen(model, peerId) { peerId = it }
+                                                    4 -> FriendActivityScreen(model)
+                                                    else -> MeScreen(model) { statusSheet = true }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    ) { measurables, constraints ->
+                        // Visited pages retain their composition, but only the selected page is laid out.
+                        val page = measurables[pages.indexOf(tab)].measure(constraints)
+                        layout(page.width, page.height) { page.placeRelative(0, 0) }
+                    }
+                }
+                if (showNavigation) {
+                    SteamBottomBar(tab, model.steam.recentSessions, if (capture) backdrop else null, Modifier.align(Alignment.BottomCenter), ::selectTab)
+                }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (showNavigation) FloatingNavigationSpace else 0.dp)) {
+                    SteamSnackbar(it)
+                }
             }
         }
     }
@@ -211,7 +267,7 @@ private fun ConnectionSheet(model: LiteModel, onClose: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onClose,
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {

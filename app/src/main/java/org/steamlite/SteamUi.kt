@@ -4,124 +4,105 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeController
 
-/* ============================================================================
- * Design tokens — single source of truth.
- *
- * Rules
- *  - one brand colour (Accent) = "this is interactive"
- *  - Money  = savings only ("-90%", historic low)
- *  - Warn   = something needs attention
- *  - Danger = destructive only
- *  - everything else is a neutral surface or neutral text
- * ========================================================================== */
+val Bg: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.surface
+val Surface1: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.surfaceContainer
+val Surface2: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.surfaceVariant
+val Surface3: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.surfaceContainerHighest
+val Line: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.dividerLine
+val LineStrong: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.outline
+val Text1: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onBackground
+val Text2: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onSurfaceSecondary
+val Text3: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onSurfaceVariantSummary
+val Accent: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.primary
+val AccentText: Color @Composable get() = if (isSystemInDarkTheme()) MiuixTheme.colorScheme.onPrimaryVariant else Color(0xFF185DBE)
+val OnAccent: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.onPrimary
+val AccentSoft: Color @Composable @ReadOnlyComposable get() = Accent.copy(alpha = 0.13f)
+val AccentLine: Color @Composable @ReadOnlyComposable get() = Accent.copy(alpha = 0.30f)
+val Danger: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.error
+val DangerText: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFFF9E97) else Color(0xFFB3261E)
+val DangerSoft: Color @Composable @ReadOnlyComposable get() = Danger.copy(alpha = 0.10f)
+val SheetScrim: Color @Composable @ReadOnlyComposable get() = MiuixTheme.colorScheme.windowDimming
 
-// ---- surfaces -------------------------------------------------------------
-val Bg = Color(0xFF0A0C11)
-val Surface1 = Color(0xFF11151C)
-val Surface2 = Color(0xFF171C25)
-val Surface3 = Color(0xFF1E242F)
-
-// ---- lines ----------------------------------------------------------------
-val Line = Color(0x14FFFFFF)          // 8% white hairline
-val LineStrong = Color(0x1FFFFFFF)    // 12% white
-
-// ---- text -----------------------------------------------------------------
-val Text1 = Color(0xFFE9EEF6)
-val Text2 = Color(0xFF9AA5B7)
-val Text3 = Color(0xFF6E7A91)
-
-// ---- semantic -------------------------------------------------------------
-val Accent = Color(0xFF4C9BF5)
-val AccentText = Color(0xFF9DCEFF)
-val AccentSoft = Color(0x244C9BF5)
-val AccentLine = Color(0x4D4C9BF5)
-
-val Money = Color(0xFF6FD98A)
-val MoneyText = Color(0xFF7FE09A)
-val MoneySoft = Color(0x226FD98A)
-val MoneyLine = Color(0x386FD98A)
-
-val Warn = Color(0xFFE0AE4B)
-val WarnText = Color(0xFFE5BE72)
-val WarnSoft = Color(0x1FE0AE4B)
-val WarnLine = Color(0x2EE0AE4B)
-
-val Danger = Color(0xFFFF7070)
-val DangerText = Color(0xFFFFA9A9)
-val DangerSoft = Color(0x1FFF7070)
-
-/**
- * Legacy aliases kept so modules outside the redesign keep compiling.
- * Prefer [Accent] / [Money] in new code.
- */
-val SteamGreen = Money
-val SteamBlue = Accent
-
-// ---- scheme ---------------------------------------------------------------
-val SteamColors = darkColorScheme(
-    primary = Accent,
-    onPrimary = Color(0xFF04121F),
-    primaryContainer = Color(0xFF17324D),
-    onPrimaryContainer = Color(0xFFD6E9FF),
-    secondary = Money,
-    onSecondary = Color(0xFF04121F),
-    secondaryContainer = Color(0xFF17324D),
-    onSecondaryContainer = Color(0xFFCBEAFF),
-    tertiary = Warn,
-    onTertiary = Color(0xFF1A1300),
-    background = Bg,
-    onBackground = Text1,
-    surface = Bg,
-    onSurface = Text1,
-    surfaceVariant = Surface2,
-    onSurfaceVariant = Text2,
-    surfaceTint = Accent,
-    inverseSurface = Text1,
-    inverseOnSurface = Bg,
-    error = Danger,
-    onError = Color(0xFF1A0000),
-    errorContainer = DangerSoft,
-    onErrorContainer = DangerText,
-    outline = Color(0xFF2A3340),
-    outlineVariant = Color(0xFF1B2130),
-    scrim = Color(0xCC04060A),
-    surfaceBright = Surface3,
-    surfaceDim = Bg,
-    surfaceContainerLowest = Color(0xFF07090D),
-    surfaceContainerLow = Surface1,
-    surfaceContainer = Surface1,
-    surfaceContainerHigh = Surface2,
-    surfaceContainerHighest = Surface3
-)
-
-// ---- type -----------------------------------------------------------------
-val SteamTypography = Typography(
-    displaySmall = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
-    headlineMedium = TextStyle(fontSize = 25.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
-    headlineSmall = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
-    titleLarge = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.15).sp),
-    titleMedium = TextStyle(fontSize = 14.5.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
-    bodyLarge = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
-    bodyMedium = TextStyle(fontSize = 13.5.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontSize = 11.5.sp, lineHeight = 16.sp),
-    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
-    labelMedium = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium),
-    labelSmall = TextStyle(fontSize = 10.5.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium)
-)
+val Money: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF7AD99B) else Color(0xFF216E3C)
+val MoneyText: Color @Composable get() = Money
+val MoneySoft: Color @Composable get() = Money.copy(alpha = 0.12f)
+val MoneyLine: Color @Composable get() = Money.copy(alpha = 0.26f)
+val Warn: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFE5BE72) else Color(0xFF865508)
+val WarnText: Color @Composable get() = Warn
+val WarnSoft: Color @Composable get() = Warn.copy(alpha = 0.10f)
+val WarnLine: Color @Composable get() = Warn.copy(alpha = 0.20f)
 
 @Composable
 fun SteamTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = SteamColors, typography = SteamTypography, content = content)
+    val controller = remember { ThemeController(ColorSchemeMode.System) }
+    val dark = isSystemInDarkTheme()
+    MiuixTheme(controller = controller) {
+        val colors = MiuixTheme.colorScheme
+        val styles = MiuixTheme.textStyles
+        val indication = LocalIndication.current
+        // Keep the remaining Material sheets, progress indicators and dialogs on the Miuix palette.
+        val materialColors = (if (dark) darkColorScheme() else lightColorScheme()).copy(
+            primary = colors.primary,
+            onPrimary = colors.onPrimary,
+            primaryContainer = colors.primaryContainer,
+            onPrimaryContainer = colors.onPrimaryContainer,
+            secondary = colors.secondary,
+            onSecondary = colors.onSecondary,
+            secondaryContainer = colors.secondaryContainer,
+            onSecondaryContainer = colors.onSecondaryContainer,
+            background = colors.background,
+            onBackground = colors.onBackground,
+            surface = colors.surface,
+            onSurface = colors.onSurface,
+            surfaceVariant = colors.surfaceVariant,
+            onSurfaceVariant = colors.onSurfaceVariantSummary,
+            surfaceTint = colors.primary,
+            surfaceContainerLowest = colors.background,
+            surfaceContainerLow = colors.surface,
+            surfaceContainer = colors.surfaceContainer,
+            surfaceContainerHigh = colors.surfaceContainerHigh,
+            surfaceContainerHighest = colors.surfaceContainerHighest,
+            inverseSurface = colors.onSurface,
+            inverseOnSurface = colors.surface,
+            inversePrimary = colors.primaryVariant,
+            error = colors.error,
+            onError = colors.onError,
+            errorContainer = colors.errorContainer,
+            onErrorContainer = colors.onErrorContainer,
+            outline = colors.outline,
+            outlineVariant = colors.dividerLine,
+            scrim = colors.windowDimming,
+        )
+        val typography = Typography(
+            headlineSmall = styles.headline2,
+            titleLarge = styles.title3,
+            titleMedium = styles.title4,
+            bodyLarge = styles.main,
+            bodyMedium = styles.body1,
+            bodySmall = styles.body2,
+            labelLarge = styles.button,
+            labelMedium = styles.footnote1,
+            labelSmall = styles.footnote2,
+        )
+        MaterialTheme(colorScheme = materialColors, typography = typography) {
+            CompositionLocalProvider(LocalIndication provides indication, content = content)
+        }
+    }
 }
 
 // ---- navigation -----------------------------------------------------------

@@ -1,5 +1,6 @@
 package org.steamlite
 
+import android.util.LruCache
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -24,15 +25,28 @@ import coil.compose.AsyncImage
  */
 @Composable
 fun SteamImage(urls: List<String>, description: String, modifier: Modifier, scale: ContentScale = ContentScale.Crop) {
+    FallbackImage(urls, description, modifier, scale)
+}
+
+@Composable
+private fun FallbackImage(
+    urls: List<String>,
+    description: String,
+    modifier: Modifier,
+    scale: ContentScale,
+    onSuccess: (String) -> Unit = {},
+) {
     var index by remember(urls) { mutableIntStateOf(0) }
     Box(modifier, contentAlignment = Alignment.Center) {
-        if (index < urls.size) {
+        val url = urls.getOrNull(index)
+        if (url != null) {
             AsyncImage(
-                model = urls[index],
+                model = url,
                 contentDescription = description,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = scale,
-                onError = { index++ }
+                onSuccess = { onSuccess(url) },
+                onError = { if (urls.getOrNull(index) == url) index++ },
             )
         } else if (description.isNotBlank()) {
             Text(
@@ -70,11 +84,22 @@ fun portraitUrls(id: Int, explicit: String? = null): List<String> = buildList {
     add("https://cdn.cloudflare.steamstatic.com/steam/apps/$id/header.jpg")
 }.distinct()
 
+// Keep the successful CDN choice when lazy rows leave composition. Coil owns the actual bitmap cache.
+private val posterSources = LruCache<List<String>, String>(512)
+
 @Composable
 fun PosterCover(id: Int, image: String?, modifier: Modifier) {
     val shape = RoundedCornerShape(10.dp)
-    Box(modifier.clip(shape).background(coverBrush(id))) {
-        SteamImage(portraitUrls(id, image), "", Modifier.fillMaxSize())
+    val urls = remember(id, image) { portraitUrls(id, image) }
+    val ordered = remember(urls) {
+        val cached = posterSources.get(urls)
+        if (cached == null || cached == urls.first()) urls else listOf(cached) + (urls - cached)
+    }
+    val placeholder = remember(id) { coverBrush(id) }
+    Box(modifier.clip(shape).background(placeholder)) {
+        FallbackImage(ordered, "", Modifier.fillMaxSize(), ContentScale.Crop) { url ->
+            posterSources.put(urls, url)
+        }
     }
 }
 

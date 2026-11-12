@@ -17,6 +17,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,11 +31,11 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
-    var query by remember { mutableStateOf(model.searchQuery) }
-    var sortPrice by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf(model.searchQuery) }
+    var sortPrice by rememberSaveable { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
-    var min by remember { mutableStateOf("") }
-    var max by remember { mutableStateOf("") }
+    var min by rememberSaveable { mutableStateOf("") }
+    var max by rememberSaveable { mutableStateOf("") }
 
     val online by model.steam.online.collectAsState()
     val wish by model.wishlist.snapshot.collectAsState()
@@ -43,28 +44,37 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
     val notice by model.wishlist.notice.collectAsState()
     val wishError by model.wishlist.error.collectAsState()
 
-    LaunchedEffect(Unit) { if (model.games.isEmpty()) model.search("") }
-    LaunchedEffect(online) { if (online) model.wishlist.refresh() }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active) {
+        if (active && model.games.isEmpty() && !model.loading && model.error.isBlank()) model.search(model.searchQuery)
+    }
+    LaunchedEffect(active, online) { if (active && online) model.wishlist.refresh() }
 
     val minCents = min.toDoubleOrNull()?.times(100)
     val maxCents = max.toDoubleOrNull()?.times(100)
-    val selected = model.games.filter { game ->
-        val cents = game.cents
-        val inRange = if (cents == null) true else {
-            (minCents == null || cents >= minCents) && (maxCents == null || cents <= maxCents)
+    val games = model.games
+    val minPositive = model.searchOptions.minPositive
+    val ordered = remember(games, minCents, maxCents, minPositive, sortPrice) {
+        val selected = games.filter { game ->
+            val cents = game.cents
+            val inRange = cents == null || ((minCents == null || cents >= minCents) && (maxCents == null || cents <= maxCents))
+            inRange && (minPositive == 0 || (game.positivePercent ?: -1) >= minPositive)
         }
-        inRange && (model.searchOptions.minPositive == 0 || (game.positivePercent ?: -1) >= model.searchOptions.minPositive)
+        if (sortPrice) selected.sortedBy { it.cents ?: Long.MAX_VALUE } else selected
     }
-    val ordered = if (sortPrice) selected.sortedBy { it.cents ?: Long.MAX_VALUE } else selected
-    val wishDiscounts = wish?.ids.orEmpty().mapNotNull { wishGames[it] }
-        .filter { it.discount > 0 }
-        .sortedByDescending { it.discount }
-        .take(6)
+    val wishIds = wish?.ids.orEmpty()
+    val wishIdSet = remember(wishIds) { wishIds.toSet() }
+    val wishDiscounts = remember(wishIds, wishGames) {
+        wishIds.mapNotNull { wishGames[it] }
+            .filter { it.discount > 0 }
+            .sortedByDescending { it.discount }
+            .take(6)
+    }
 
     RefreshContainer(model.loading, { model.search(query, true) }) { Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 28.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
         ) {
             item {
                 PageHeader("折扣首页")
@@ -151,7 +161,7 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                     item {
                         SectionHeader("愿望单降价") { TextLink("查看全部", onOpenWishlist) }
                     }
-                    items(wishDiscounts, key = { "wish:${it.id}" }) { game ->
+                    items(wishDiscounts, key = { "wish:${it.id}" }, contentType = { "game" }) { game ->
                         GameRow(
                             gameId = game.id,
                             image = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.id}/library_600x900.jpg",
@@ -185,8 +195,8 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                 }
             }
 
-            items(ordered, key = { "store:${it.id}" }) { game ->
-                val inWishlist = wish?.ids?.contains(game.id) == true
+            items(ordered, key = { "store:${it.id}" }, contentType = { "game" }) { game ->
+                val inWishlist = game.id in wishIdSet
                 GameRow(
                     gameId = game.id,
                     image = game.image,
@@ -242,7 +252,7 @@ private fun StoreFilterSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         containerColor = Surface1,
-        scrimColor = Color(0xCC04060A),
+        scrimColor = SheetScrim,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         dragHandle = { SheetHandle() }
     ) {

@@ -4,29 +4,24 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +30,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,24 +60,22 @@ fun AccentButton(
     enabled: Boolean = true,
     glyph: Glyph? = null
 ) {
+    val colors = ButtonDefaults.buttonColorsPrimary()
     Button(
         onClick = onClick,
-        modifier = modifier.height(40.dp),
+        modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(11.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Accent,
-            contentColor = Color(0xFF04121F),
-            disabledContainerColor = Surface3,
-            disabledContentColor = Text3
-        ),
-        contentPadding = PaddingValues(horizontal = 18.dp)
+        minWidth = 0.dp,
+        minHeight = 44.dp,
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        colors = colors,
     ) {
+        val tint = if (enabled) colors.contentColor else colors.disabledContentColor
         if (glyph != null) {
-            SteamIcon(glyph, 15.dp, if (enabled) Color(0xFF04121F) else Text3, 2f)
+            SteamIcon(glyph, 15.dp, tint, 2f)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        MiuixText(text, color = tint, style = MiuixTheme.textStyles.button)
     }
 }
 
@@ -91,42 +88,35 @@ fun GhostButton(
     glyph: Glyph? = null,
     tint: Color = Text1
 ) {
-    val shape = RoundedCornerShape(11.dp)
-    Row(
-        modifier
-            .height(40.dp)
-            .clip(shape)
-            .background(Surface2)
-            .border(1.dp, LineStrong, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 18.dp),
-        verticalAlignment = Alignment.CenterVertically
+    val colors = ButtonDefaults.buttonColors(contentColor = tint)
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        minWidth = 0.dp,
+        minHeight = 44.dp,
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        colors = colors,
     ) {
+        val contentColor = if (enabled) tint else colors.disabledContentColor
         if (glyph != null) {
-            SteamIcon(glyph, 15.dp, tint, 2f)
+            SteamIcon(glyph, 15.dp, contentColor, 2f)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tint)
+        MiuixText(text, color = contentColor, style = MiuixTheme.textStyles.button)
     }
 }
 
 // ---------------------------------------------------------------- app chrome
 
-/**
- * Compact page header. Deliberately small: the title is a signpost, not a hero.
- * No global brand bar — the app identity lives on the「我的」page.
- */
 @Composable
 fun PageHeader(title: String, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp, color = Text1)
-        if (trailing != null) {
-            Spacer(Modifier.weight(1f))
-            trailing()
-        }
+        MiuixText(title, Modifier.weight(1f), color = Text1, style = MiuixTheme.textStyles.title1)
+        trailing?.invoke()
     }
 }
 
@@ -214,7 +204,7 @@ fun SteamChip(text: String, active: Boolean, count: Int? = null, onClick: () -> 
         Text(text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = if (active) AccentText else Text2)
         if (count != null) {
             Spacer(Modifier.width(5.dp))
-            Text(count.toString(), fontSize = 11.sp, color = if (active) Color(0x99C9E4FF) else Text3)
+            Text(count.toString(), fontSize = 11.sp, color = if (active) AccentText else Text3)
         }
     }
 }
@@ -375,7 +365,7 @@ fun EmptyState(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            SteamIcon(glyph, 26.dp, if (tone == Tone.Warn) WarnText else Color(0xFF86BEFA), 1.5f)
+            SteamIcon(glyph, 26.dp, if (tone == Tone.Warn) WarnText else Accent, 1.5f)
         }
         Spacer(Modifier.height(18.dp))
         Text(title, fontSize = 15.5.sp, fontWeight = FontWeight.Bold, color = Text1, textAlign = TextAlign.Center)
@@ -407,7 +397,7 @@ fun SteamSnackbar(data: SnackbarData) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .clip(shape)
-            .background(Color(0xFF1B212B))
+            .background(Surface3)
             .border(1.dp, LineStrong, shape)
             .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -660,68 +650,12 @@ fun StatCell(label: String, value: String, unit: String?, sub: String?, modifier
     }
 }
 
-// ---------------------------------------------------------------- navigation
-
-@Composable
-fun SteamBottomBar(selected: Int, hasUnreadMessages: Boolean = false, onSelect: (Int) -> Unit) {
-    val entries = listOf(
-        Triple(0, "商店", Glyph.Store),
-        Triple(1, "愿望单", Glyph.Heart),
-        Triple(4, "动态", Glyph.Bell),
-        Triple(2, "消息", Glyph.Chat),
-        Triple(3, "我的", Glyph.User)
-    )
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(Bg)
-            .drawBehind {
-                drawLine(Line, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
-            }
-            .navigationBarsPadding()
-    ) {
-        Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 6.dp)) {
-            entries.forEach { (index, label, glyph) ->
-                val active = index == selected
-                val activeColor by animateColorAsState(if (active) AccentSoft else Color.Transparent, tween(150), label = "navigation selection")
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { onSelect(index) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(
-                        Modifier
-                            .width(44.dp)
-                            .height(26.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(activeColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SteamIcon(glyph, 20.dp, if (active) Accent else Text3, if (active) 2f else 1.75f)
-                        if (index == 2 && hasUnreadMessages) Box(Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 4.dp).size(6.dp).background(Accent, CircleShape))
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        label,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (active) Accent else Text3
-                    )
-                }
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------- sheet
 
 @Composable
 fun SheetHandle() {
     Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(34.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x29FFFFFF)))
+        Box(Modifier.size(34.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Text3.copy(alpha = 0.45f)))
     }
 }
 
@@ -736,44 +670,32 @@ fun SheetClose(onClose: () -> Unit) {
 }
 
 @Composable
-fun UnderlineTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, badge: Int = 0) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-            labels.forEachIndexed { index, label ->
-                val active = index == selected
-                Row(
-                    Modifier
-                        .clickable { onSelect(index) }
-                        .padding(end = 26.dp, bottom = 10.dp)
-                        .drawBehind {
-                            if (active) {
-                                val y = size.height - 1.dp.toPx()
-                                drawLine(
-                                    color = Accent,
-                                    start = Offset(0f, y),
-                                    end = Offset(size.width, y),
-                                    strokeWidth = 2.5.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                        },
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Text(
-                        label,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (active) Text1 else Text3
-                    )
-                    if (index == 1 && badge > 0) {
-                        Box(
-                            Modifier.padding(start = 4.dp, bottom = 4.dp).size(5.dp)
-                                .clip(CircleShape).background(Accent)
-                        )
-                    }
+fun MessageTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, badge: Int = 0) {
+    Row(
+        Modifier.fillMaxWidth().clip(CircleShape).background(Surface3)
+            .padding(3.dp).selectableGroup(),
+    ) {
+        labels.forEachIndexed { index, label ->
+            val active = index == selected
+            Row(
+                Modifier.weight(1f).clip(CircleShape)
+                    .background(if (active) Surface1 else Color.Transparent)
+                    .selectable(selected = active, role = Role.Tab, onClick = { onSelect(index) })
+                    .padding(vertical = 9.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MiuixText(
+                    label,
+                    style = MiuixTheme.textStyles.body2,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (active) Text1 else Text2,
+                    maxLines = 1,
+                )
+                if (index == 1 && badge > 0) {
+                    Box(Modifier.size(5.dp).background(Accent, CircleShape))
                 }
             }
         }
-        Hairline()
     }
 }

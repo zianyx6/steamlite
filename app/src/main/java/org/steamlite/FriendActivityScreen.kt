@@ -30,7 +30,8 @@ fun FriendActivityScreen(model: LiteModel) {
     val more by repo.hasMore.collectAsState()
     val online by model.steam.online.collectAsState()
     var viewing by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(online, model.steam.owner) { if (online && items.isEmpty()) repo.refresh() }
+    val active = LocalRootTabActive.current
+    LaunchedEffect(active, online, model.steam.owner) { if (active && online && items.isEmpty()) repo.refresh() }
 
     RefreshContainer(busy, { repo.refresh() }) { Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp)) {
@@ -79,7 +80,7 @@ fun FriendActivityScreen(model: LiteModel) {
         } else {
             LazyColumn(
                 Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp)
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
             ) {
                 itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
                     val day = item.day.takeIf { it.isNotBlank() }
