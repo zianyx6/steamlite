@@ -6,9 +6,9 @@
 
 [![Android build](https://github.com/zianyx6/steamlite/actions/workflows/android.yml/badge.svg)](https://github.com/zianyx6/steamlite/actions/workflows/android.yml)
 
-[![下载 Android 安装包](docs/download-apk.svg)](https://github.com/zianyx6/steamlite/releases/download/v1.0.1/SteamLite-1.0.1.apk)
+[![下载 Android 安装包](docs/download-apk.svg)](https://github.com/zianyx6/steamlite/releases/download/v1.0.2/SteamLite-1.0.2.apk)
 
-### [⬇️ 直接下载 SteamLite-1.0.1.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.1/SteamLite-1.0.1.apk)
+### [⬇️ 直接下载 SteamLite-1.0.2.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.2/SteamLite-1.0.2.apk)
 
 [发行说明与全部附件](https://github.com/zianyx6/steamlite/releases/latest) · [问题反馈](https://github.com/zianyx6/steamlite/issues) · [MIT License](LICENSE)
 
@@ -26,7 +26,7 @@ Miuix 主题跟随系统深浅色。悬浮底栏避开系统手势区，键盘�
 
 ## 安装
 
-1. 下载上方的 **SteamLite-1.0.1.apk**。
+1. 下载上方的 **SteamLite-1.0.2.apk**。
 2. 在 Android 上打开 APK，按系统提示允许该下载来源安装应用。
 3. 使用相同签名的旧版本可直接覆盖升级并保留本地数据。
 4. 进入“我的”登录 Steam。可等待官方手机应用批准，也可直接提交 Steam Guard 令牌码；按 Steam 实际提供的认证方式完成登录。
@@ -47,7 +47,7 @@ Miuix 主题跟随系统深浅色。悬浮底栏避开系统手势区，键盘�
 
 ## 已知边界
 
-- 1.0.1 在 Android 12 MuMu 验证了覆盖安装和后台服务启动。当前界面在 Android 16 真机验证了深浅色、标签切换、商店滚动、键盘和手势区适配。长时间锁屏、厂商省电策略及登录后的长列表仍待扩大验证。
+- 1.0.2 在 Android 12 MuMu 验证了覆盖安装、会话恢复、普通悬浮底栏和后台服务。当前界面在 Android 16 真机验证了深浅色、标签切换、商店滚动、键盘和手势区适配。长时间锁屏、厂商省电策略及登录后的长列表仍待扩大验证。
 - 语音通话限好友私聊与前台使用；群语音、视频通话和完整群管理尚未提供。
 - 需要能够访问 Steam 社区、聊天与图片 CDN。限流时会停止继续查询价格，保留已加载数据；完整同步可能有部分项目未完成。
 - 商店报价采用 PK/USD 查询上下文，游戏价值是已获得的当前报价合计，不是购买支出；价格观察不代表全历史最低价。

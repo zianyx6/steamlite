@@ -17,9 +17,9 @@
 
 ## GitHub 自动构建
 
-推送到 `main` 或提交 Pull Request 会运行 JVM 测试、Debug Lint 和 Debug APK 构建。也可进入 [Actions → Android build](https://github.com/zianyx6/steamlite/actions/workflows/android.yml)，点击 **Run workflow** 手动运行。
+推送到 `main` 或提交 Pull Request 会运行 JVM 测试、Debug 与 Release Lint，并构建两种 APK。也可进入 [Actions → Android build](https://github.com/zianyx6/steamlite/actions/workflows/android.yml)，点击 **Run workflow** 手动运行。
 
-运行页面的 **Artifacts** 提供测试/Lint 报告和 `SteamLite-debug-运行编号`。下载后解压 ZIP，安装其中的 `app-debug.apk`；产物保留 14 天，下载需要登录 GitHub。
+运行页面的 **Artifacts** 提供测试与 Lint 报告、`SteamLite-debug-运行编号` 和 `SteamLite-release-unsigned-运行编号`。Debug 产物解压后可安装其中的 `app-debug.apk`。Release 产物已启用 R8 和资源压缩，需要签名后才能安装。产物保留 14 天，下载需要登录 GitHub。
 
 CI 的 Debug APK 用于测试，签名与正式安装包不同，也不保证不同构建间一致；不能直接覆盖正式版。日常使用请下载 [最新正式版](https://github.com/zianyx6/steamlite/releases/latest)。CI 不持有发布私钥，不会自动替换已发布的安装包。
 
