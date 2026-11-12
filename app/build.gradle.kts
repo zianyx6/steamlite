@@ -12,7 +12,7 @@ kotlin {
 android {
     namespace = "org.steamlite"
     compileSdk = 37
-    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 101; versionName = "1.0.1"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
+    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 102; versionName = "1.0.2"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
     val releaseKey = System.getenv("STEAMLITE_KEYSTORE")
     if (!releaseKey.isNullOrBlank()) signingConfigs.create("distribution") {
         storeFile = file(releaseKey)
