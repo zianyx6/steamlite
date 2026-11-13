@@ -84,7 +84,7 @@ object FriendActivityParser {
         }
     }
 
-    private fun paragraphs(element: Element): String = element.clone().also { it.select("br").after("&#10;") }.wholeText().lines()
+    private fun paragraphs(element: Element): String = element.wholeText().lines()
         .map { it.replace(Regex("[\\t \\u00a0]+"), " ").trim() }
         .joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
 
