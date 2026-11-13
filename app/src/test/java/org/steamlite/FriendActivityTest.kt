@@ -105,4 +105,22 @@ class FriendActivityTest {
         assertEquals("4", review.commentCount)
         assertEquals(listOf(ActivityReply("示例评论者", "这是一条回复")), review.replies)
     }
+
+    @Test fun reviewFallbackKeepsAuthorParagraphsAndDropsSteamVotingChrome() {
+        val post = FriendActivityParser.parse("""
+            <div class="blotter_block">
+              <a class="blotter_author_block" href="/profiles/123">作者</a><br>
+              评测了《ICEY》<br><br>
+              有 5 人觉得这篇评测有价值<br><br>
+              不推荐<br>过去 2 周 0 小时 / 总时数 2 小时<br><br>
+              有难度选择，旁白有中文配音。<br>我更喜欢另一款动作游戏。<br><br>
+              这篇评测是否有价值？<br><br>是<br>否<br>欢乐
+              <img src="https://community.fastly.steamstatic.com/public/images/userreviews/icon_thumbsDown.png">
+              <a href="/id/example/recommended/123/"></a>
+            </div>
+        """.trimIndent()).single()
+        assertEquals(ActivityKind.Review, post.kind)
+        assertEquals(false, post.recommendsGame)
+        assertEquals("有难度选择，旁白有中文配音。\n我更喜欢另一款动作游戏。", post.text)
+    }
 }

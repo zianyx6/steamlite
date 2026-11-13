@@ -66,7 +66,7 @@ object FriendActivityParser {
                 }
                 voteIcons.firstOrNull() ?: reviewVote(block.select(".review_box .title, .blotter_review_title").text())
             } else null
-            val review = block.selectFirst(".blotter_review_text, .blotter_recommendation_text, .review_box .content")
+            val review = block.selectFirst(".blotter_review_text, .blotter_recommendation_text, .review_box .content, .recommendation .content")
             val text = paragraphs(review ?: block)
             if(text.isBlank()) return@mapNotNull null
             val day = block.parents().firstOrNull { it.hasClass("blotter_day") }?.selectFirst(".blotter_day_header_date")?.text().orEmpty()
@@ -89,6 +89,7 @@ object FriendActivityParser {
             val games = activityGames(anchors, ownedNames)
             val body = when {
                 review != null -> text
+                kind == ActivityKind.Review -> reviewBody(text.removePrefix(author).trimStart())
                 !caption.isNullOrBlank() -> caption
                 kind == ActivityKind.Screenshot && images.isNotEmpty() -> ""
                 else -> text.removePrefix(author).trimStart()
@@ -97,6 +98,26 @@ object FriendActivityParser {
                 ?: replies.size.takeIf { it > 0 }?.toString()
             FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, recommendsGame)
         }
+    }
+
+    private fun reviewBody(text: String): String {
+        val lines = text.lines()
+        val controls = setOf("是", "否", "欢乐", "有趣", "Yes", "No", "Funny", "赞", "分享")
+        val prompt = Regex("^(?:这篇(?:评测|测评)是否有价值[？?]?|Was this review helpful\\??)$", RegexOption.IGNORE_CASE)
+        val footer = lines.indices.lastOrNull { index ->
+            prompt.matches(lines[index].trim()) &&
+                lines.drop(index + 1).filter { it.isNotBlank() }.let { it.isNotEmpty() && it.all { line -> line.trim() in controls } }
+        } ?: lines.size
+        val metadata = listOf(
+            Regex("^(?:推荐|不推荐|Recommended|Not Recommended)$", RegexOption.IGNORE_CASE),
+            Regex("^有\\s*[\\d,]+\\s*人觉得这篇(?:评测|测评)有价值[。.]?$"),
+            Regex("^评测了\\s*《[^》]+》[。.]?$"),
+            Regex("^过去\\s*\\d+\\s*周.*(?:小时|时数).*$"),
+            Regex("^[\\d,]+ people found this review helpful[.]?$", RegexOption.IGNORE_CASE)
+        )
+        return lines.take(footer)
+            .dropWhile { it.isBlank() || metadata.any { pattern -> pattern.matches(it.trim()) } }
+            .joinToString("\n").trim()
     }
 
     private fun activityGames(anchors: List<Element>, ownedNames: List<String>): List<ActivityGame> {
