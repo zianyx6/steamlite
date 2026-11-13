@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="92" viewBox="0 0 520 92" role="img" aria-label="Download Steam Lite 1.0.2 Android APK">
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="92" viewBox="0 0 520 92" role="img" aria-label="Download Steam Lite 1.0.3 Android APK">
   <defs><linearGradient id="b" x2="1" y2="1"><stop stop-color="#1689ed"/><stop offset="1" stop-color="#0757bb"/></linearGradient></defs>
   <rect width="520" height="92" rx="18" fill="url(#b)"/>
   <path d="M47 22v30m-12-12 12 12 12-12M30 60v10h34V60" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="88" y="40" font-family="Arial,sans-serif" font-size="23" font-weight="700" fill="white">DOWNLOAD ANDROID APK</text>
-  <text x="88" y="67" font-family="Arial,sans-serif" font-size="16" fill="#d8eeff">Steam Lite 1.0.2 · Android 8.0+</text>
+  <text x="88" y="67" font-family="Arial,sans-serif" font-size="16" fill="#d8eeff">Steam Lite 1.0.3 · Android 8.0+</text>
 </svg>

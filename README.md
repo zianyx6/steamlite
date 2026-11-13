@@ -6,9 +6,9 @@
 
 [![Android build](https://github.com/zianyx6/steamlite/actions/workflows/android.yml/badge.svg)](https://github.com/zianyx6/steamlite/actions/workflows/android.yml)
 
-[![下载 Android 安装包](docs/download-apk.svg)](https://github.com/zianyx6/steamlite/releases/download/v1.0.2/SteamLite-1.0.2.apk)
+[![下载 Android 安装包](docs/download-apk.svg)](https://github.com/zianyx6/steamlite/releases/download/v1.0.3/SteamLite-1.0.3.apk)
 
-### [⬇️ 直接下载 SteamLite-1.0.2.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.2/SteamLite-1.0.2.apk)
+### [⬇️ 直接下载 SteamLite-1.0.3.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.3/SteamLite-1.0.3.apk)
 
 [发行说明与全部附件](https://github.com/zianyx6/steamlite/releases/latest) · [问题反馈](https://github.com/zianyx6/steamlite/issues) · [MIT License](LICENSE)
 
@@ -26,10 +26,10 @@ Miuix 主题跟随系统深浅色。悬浮底栏避开系统手势区，键盘�
 
 ## 安装
 
-1. 下载上方的 **SteamLite-1.0.2.apk**。
+1. 下载上方的 **SteamLite-1.0.3.apk**。
 2. 在 Android 上打开 APK，按系统提示允许该下载来源安装应用。
 3. 使用相同签名的旧版本可直接覆盖升级并保留本地数据。
-4. 进入“我的”登录 Steam。可等待官方手机应用批准，也可直接提交 Steam Guard 令牌码；按 Steam 实际提供的认证方式完成登录。
+4. 进入“我的”登录 Steam。可用另一台设备的 Steam Guard 扫描登录二维码，也可使用账号密码。可等待官方手机应用批准，也可直接提交 Steam Guard 令牌码；按 Steam 实际提供的认证方式完成登录。
 
 应用直接连接 Steam，会话由 Android Keystore 保护。密码不保存在应用中，也不发送至开发者服务器。
 
