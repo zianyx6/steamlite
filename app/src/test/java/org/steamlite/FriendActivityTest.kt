@@ -139,5 +139,14 @@ class FriendActivityTest {
         assertEquals(ActivityKind.Review, post.kind)
         assertEquals(false, post.recommendsGame)
         assertEquals("有难度选择，旁白有中文配音。\n我更喜欢另一款动作游戏。", post.text)
+        val noVotes = FriendActivityParser.parse("""
+            <div class="blotter_block">
+                <a href="/id/example/recommended/123/"></a>
+                尚未有人觉得这篇评测有价值<br><br>
+                推荐<br>过去 2 周 3 小时 / 总时数 3 小时<br><br>
+                有难度选择，旁白有中文配音。
+            </div>
+        """.trimIndent()).single()
+        assertEquals("有难度选择，旁白有中文配音。", noVotes.text)
     }
 }

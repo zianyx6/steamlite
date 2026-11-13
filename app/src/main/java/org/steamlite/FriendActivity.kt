@@ -91,6 +91,13 @@ object FriendActivityParser {
                         image.className().contains("avatarframe", ignoreCase = true)) null
                     else imageSource(image)?.takeUnless { it.contains("/images/items/") }
                 }
+                ?: block.select("img").firstNotNullOfOrNull { image ->
+                    imageSource(image)?.takeIf { url ->
+                        val address = url.toHttpUrlOrNull()
+                        address?.host?.startsWith("avatars.") == true ||
+                            address?.encodedPath?.startsWith("/avatars/") == true
+                    }
+                }
             val caption = block.selectFirst(".blotter_screenshot_caption, .blotter_screenshot_description")?.let(::paragraphs)
             val ownedNames = if (kind == ActivityKind.OwnedGame) {
                 text.lines().flatMap { line ->
@@ -122,10 +129,10 @@ object FriendActivityParser {
         } ?: lines.size
         val metadata = listOf(
             Regex("^(?:推荐|不推荐|Recommended|Not Recommended)$", RegexOption.IGNORE_CASE),
-            Regex("^有\\s*[\\d,]+\\s*人觉得这篇(?:评测|测评)有价值[。.]?$"),
+            Regex("^(?:有\\s*[\\d,]+\\s*人|尚未有人|还没有人|没有人)觉得这篇(?:评测|测评)有价值[。.]?$"),
             Regex("^评测了\\s*《[^》]+》[。.]?$"),
             Regex("^过去\\s*\\d+\\s*周.*(?:小时|时数).*$"),
-            Regex("^[\\d,]+ people found this review helpful[.]?$", RegexOption.IGNORE_CASE)
+            Regex("^(?:[\\d,]+ people found this review helpful|No one has rated this review as helpful yet)[.]?$", RegexOption.IGNORE_CASE)
         )
         return lines.take(footer)
             .dropWhile { it.isBlank() || metadata.any { pattern -> pattern.matches(it.trim()) } }
