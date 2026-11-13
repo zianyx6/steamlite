@@ -50,4 +50,33 @@ class FriendActivityTest {
         assertEquals(listOf("游戏" to "https://steamcommunity.com/app/123"), card.links)
     }
     @Test fun emptyFeedDoesNotInventActivity() { assertTrue(FriendActivityParser.parse("<div class='blotter_day'></div>").isEmpty()) }
+
+    @Test fun postTypesAndExistingRepliesStaySeparateFromTheBody() {
+        val html = """
+            <div class="blotter_block" id="review">
+              <div class="blotter_header">好友发表了游戏测评</div>
+              <a href="https://store.steampowered.com/app/123/">示例游戏</a>
+              <div class="blotter_review_text">第一段<br>第二段</div>
+              <div class="blotter_vote_container"><span class="vote_count">12</span></div>
+              <div class="commentthread_area">
+                <span class="commentthread_count_label">4 条评论</span>
+                <div class="commentthread_comment">
+                  <a class="commentthread_author_link">示例评论者</a>
+                  <div class="commentthread_comment_text">这是一条回复</div>
+                </div>
+                <button>提交评论</button>
+              </div>
+            </div>
+            <div class="blotter_block">好友上传了 2 张截图</div>
+            <div class="blotter_block">好友现在拥有了示例游戏</div>
+        """.trimIndent()
+        val posts = FriendActivityParser.parse(html)
+        assertEquals(listOf(ActivityKind.Review, ActivityKind.Screenshot, ActivityKind.OwnedGame), posts.map { it.kind })
+        val review = posts.first()
+        assertEquals(123, review.game?.appId)
+        assertEquals("第一段\n第二段", review.text)
+        assertEquals("12", review.likes)
+        assertEquals("4", review.commentCount)
+        assertEquals(listOf(ActivityReply("示例评论者", "这是一条回复")), review.replies)
+    }
 }

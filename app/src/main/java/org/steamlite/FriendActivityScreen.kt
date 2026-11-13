@@ -119,87 +119,169 @@ fun FriendActivityScreen(model: LiteModel) {
 private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(18.dp)
-    var expanded by remember(item.id) { mutableStateOf(false) }
-    var truncated by remember(item.id) { mutableStateOf(false) }
-    val body = remember(item.text) { ChatContent.preview(item.text) }
-    val links = remember(item.links) { item.links.sortedBy { (_, url) -> if (Regex("https://steamcommunity.com/(id|profiles)/[^/]+/?$").matches(url)) 1 else 0 } }
+    val label = when (item.kind) {
+        ActivityKind.Review -> "游戏测评"
+        ActivityKind.Screenshot -> "上传截图"
+        ActivityKind.OwnedGame -> "购入游戏"
+        ActivityKind.Other -> null
+    }
+    val source = remember(item.links) {
+        item.links.firstOrNull { (_, url) ->
+            url.startsWith("https://steamcommunity.com/") &&
+                (url.contains("/recommended/") || url.contains("sharedfiles/filedetails") || url.contains("/status/"))
+        } ?: item.links.firstOrNull { it.second != item.game?.url && !it.second.matches(Regex("https://steamcommunity.com/(id|profiles)/[^/]+/?")) }
+    }
     Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(Surface1)
-            .border(1.dp, Line, shape)
-            .padding(16.dp)
+        Modifier.fillMaxWidth().clip(shape).background(Surface1).border(1.dp, Line, shape).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (item.avatar != null) PersonAvatar(item.author.ifBlank { "好友" }, item.avatar, null, 38.dp)
-            else Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(AccentSoft), contentAlignment = Alignment.Center) {
-                SteamIcon(Glyph.Bell, 18.dp, Accent, 1.7f)
-            }
+            PersonAvatar(item.author.ifBlank { "好友" }, item.avatar, null, 38.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.author.ifBlank { "好友动态" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Text1, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(item.day.ifBlank { "Steam 社区" }, fontSize = 10.5.sp, color = Text3, modifier = Modifier.padding(top = 2.dp))
+                Text(item.author.ifBlank { "好友动态" }, color = Text1, fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(item.day.ifBlank { "Steam 社区" }, color = Text3, fontSize = 10.5.sp)
+            }
+            if (label != null) {
+                Text(label, Modifier.background(AccentSoft, RoundedCornerShape(20.dp)).padding(horizontal = 9.dp, vertical = 5.dp),
+                    fontSize = 10.5.sp, color = AccentText)
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Text(body.ifBlank { "好友更新了一条动态" }, fontSize = 13.sp, lineHeight = 21.sp, color = Text2,
-            maxLines = if (expanded) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis,
-            onTextLayout = { if (!expanded) truncated = it.hasVisualOverflow })
-        if (truncated || expanded) Text(if (expanded) "收起" else "展开全文", fontSize = 11.5.sp, color = AccentText,
-            modifier = Modifier.padding(top = 6.dp).clickable { expanded = !expanded })
 
-        if (item.images.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            item.images.chunked(2).forEach { row ->
-              Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        when (item.kind) {
+            ActivityKind.Review -> {
+                item.game?.let { ActivityGameCard(it, "测评游戏") }
+                if (item.text.isNotBlank()) Column(
+                    Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(12.dp)
+                ) { ActivityBody(item.text) }
+            }
+            ActivityKind.Screenshot -> {
+                val title = item.game?.title
+                Text(if (title.isNullOrBlank()) "游戏截图" else title, color = Text1,
+                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                if (item.images.isEmpty()) ActivityBody(item.text)
+            }
+            ActivityKind.OwnedGame -> {
+                if (item.game != null) ActivityGameCard(item.game, "已加入游戏库")
+                else ActivityBody(item.text)
+            }
+            ActivityKind.Other -> ActivityBody(item.text)
+        }
+
+        if (item.kind != ActivityKind.OwnedGame || item.game == null) {
+            ActivityPhotos(item.images, onImage)
+        }
+        if (source != null) {
+            Row(
+                Modifier.clickable { openSteamLink(context, source.second) }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (item.kind == ActivityKind.Review) "查看 Steam 测评" else "查看 Steam 动态",
+                    color = AccentText, fontSize = 11.5.sp)
+                Spacer(Modifier.width(4.dp))
+                SteamIcon(Glyph.ChevronRight, 12.dp, AccentText)
+            }
+        }
+        ActivityInteractions(item)
+    }
+}
+
+@Composable
+private fun ActivityBody(text: String) {
+    if (text.isBlank()) return
+    var expanded by remember(text) { mutableStateOf(false) }
+    var truncated by remember(text) { mutableStateOf(false) }
+    Text(text, fontSize = 13.sp, lineHeight = 21.sp, color = Text2,
+        maxLines = if (expanded) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (!expanded) truncated = it.hasVisualOverflow })
+    if (truncated || expanded) {
+        Text(if (expanded) "收起" else "展开全文", color = AccentText, fontSize = 11.5.sp,
+            modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 5.dp))
+    }
+}
+
+@Composable
+private fun ActivityGameCard(game: ActivityGame, subtitle: String) {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Surface2)
+            .clickable { openSteamLink(context, game.url) }.padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        game.appId?.let {
+            PosterCover(it, null, Modifier.size(42.dp, 56.dp))
+            Spacer(Modifier.width(10.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(game.title, color = Text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = Text3, fontSize = 11.sp)
+        }
+        SteamIcon(Glyph.ChevronRight, 14.dp, Text3)
+    }
+}
+
+@Composable
+private fun ActivityPhotos(images: List<String>, onImage: (String) -> Unit) {
+    val columns = if (images.size <= 2) images.size else 3
+    if (columns == 0) return
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        images.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 row.forEach { url ->
                     var failed by remember(url) { mutableStateOf(false) }
-                    Box(Modifier.weight(1f).aspectRatio(if (item.images.size == 1) 16f / 9f else 1.35f)
-                        .clip(RoundedCornerShape(12.dp)).background(Surface2).clickable { onImage(url) }, contentAlignment = Alignment.Center) {
-                    if (failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SteamIcon(Glyph.Image, 24.dp, Text3)
-                        Text("点击查看图片", fontSize = 10.sp, color = Text3, modifier = Modifier.padding(top = 6.dp))
-                    } else
-                    AsyncImage(
-                        model = url,
-                        contentDescription = "活动图片",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = if (item.images.size == 1) ContentScale.Fit else ContentScale.Crop,
-                        onError = { failed = true }
-                    )
+                    Box(
+                        Modifier.weight(1f).aspectRatio(if (columns == 1) 16f / 9f else 1f)
+                            .clip(RoundedCornerShape(9.dp)).background(Surface2).clickable { onImage(url) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (failed) SteamIcon(Glyph.Image, 24.dp, Text3)
+                        else AsyncImage(url, "查看动态图片", Modifier.fillMaxSize(),
+                            contentScale = if (columns == 1) ContentScale.Fit else ContentScale.Crop,
+                            onError = { failed = true })
                     }
                 }
-                if (row.size == 1 && item.images.size > 1) Spacer(Modifier.weight(1f))
-              }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
 
-        if (item.links.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                links.take(if (expanded) 8 else 2).forEach { (label, url) ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Surface2)
-                            .clickable { openSteamLink(context, url) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            label,
-                            modifier = Modifier.weight(1f),
-                            fontSize = 11.sp,
-                            color = AccentText,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.width(3.dp))
-                        SteamIcon(Glyph.ChevronRight, 11.dp, Accent, 2f)
+@Composable
+private fun ActivityInteractions(item: FriendActivity) {
+    var expanded by remember(item.id) { mutableStateOf(false) }
+    val replies = item.replies
+    val count = item.commentCount ?: replies.size.takeIf { it > 0 }?.toString()
+    Column(
+        Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SteamIcon(Glyph.Heart, 14.dp, AccentText)
+            Text(item.likes?.let { "$it 人点赞" } ?: "点赞", color = Text2, fontSize = 11.sp)
+            Spacer(Modifier.width(6.dp))
+            SteamIcon(Glyph.Chat, 14.dp, AccentText)
+            Text(count?.let { "$it 条评论" } ?: "评论", color = Text2, fontSize = 11.sp)
+        }
+        if (replies.isNotEmpty()) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+            replies.take(if (expanded) replies.size else 3).forEach { reply ->
+                val line = androidx.compose.ui.text.buildAnnotatedString {
+                    if (reply.author.isNotBlank()) {
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = AccentText, fontWeight = FontWeight.SemiBold))
+                        append(reply.author)
+                        pop()
+                        append("：")
                     }
+                    append(reply.text)
                 }
+                Text(line, color = Text2, fontSize = 12.sp, lineHeight = 18.sp)
+            }
+            if (replies.size > 3) {
+                Text(if (expanded) "收起回复" else "展开其余 ${replies.size - 3} 条回复",
+                    Modifier.clickable { expanded = !expanded }.padding(vertical = 4.dp),
+                    color = AccentText, fontSize = 11.sp)
             }
         }
     }
