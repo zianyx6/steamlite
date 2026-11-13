@@ -47,7 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -680,10 +679,9 @@ private fun DraftPreview(text: String) {
     ) {
         parts.forEach { part ->
             when (part) {
-                is ChatPart.Emote -> AsyncImage(
-                    model = ChatContent.emoteUrl(part.name),
-                    contentDescription = ":" + part.name + ":",
-                    modifier = Modifier.size(18.dp).padding(end = 2.dp)
+                is ChatPart.Emote -> SteamImage(
+                    ChatContent.emoteUrls(part.name), ":${part.name}:",
+                    Modifier.size(18.dp).padding(end = 2.dp), androidx.compose.ui.layout.ContentScale.Fit
                 )
                 is ChatPart.Plain -> Text(
                     part.text,
@@ -812,7 +810,10 @@ fun MessageComposer(model: LiteModel, key: String, enabled: Boolean, send: (Stri
                     ) {
                         items(cells.size) { index ->
                             val name = cells[index]
-                            val url = if (stickerPage) ChatContent.stickerUrl(name) else ChatContent.emoteUrl(name)
+                            val urls = remember(stickerPage, name) {
+                                if (stickerPage) ChatContent.stickerUrls(ChatContent.stickerUrl(name))
+                                else ChatContent.emoteUrls(name)
+                            }
                             Box(
                                 Modifier.size(cell).clip(RoundedCornerShape(12.dp))
                                     .clickable {
@@ -828,11 +829,9 @@ fun MessageComposer(model: LiteModel, key: String, enabled: Boolean, send: (Stri
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                AsyncImage(
-                                    model = url,
-                                    contentDescription = ":$name:",
-                                    modifier = Modifier.fillMaxSize().padding(if (stickerPage) 5.dp else 7.dp)
-                                )
+                                SteamImage(urls, ":$name:",
+                                    Modifier.fillMaxSize().padding(if (stickerPage) 5.dp else 7.dp),
+                                    androidx.compose.ui.layout.ContentScale.Fit)
                             }
                         }
                     }
