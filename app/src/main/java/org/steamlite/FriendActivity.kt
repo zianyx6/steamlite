@@ -19,7 +19,7 @@ data class FriendActivity(
     val links: List<Pair<String, String>>, val author: String = "", val avatar: String? = null,
     val kind: ActivityKind = ActivityKind.Other, val games: List<ActivityGame> = emptyList(),
     val likes: String? = null, val commentCount: String? = null,
-    val replies: List<ActivityReply> = emptyList()
+    val replies: List<ActivityReply> = emptyList(), val ownedGameNames: List<String> = emptyList()
 )
 object FriendActivityParser {
     /** Jsoup resolves an empty src to the document URL, which is HTML, not an image. */
@@ -44,7 +44,7 @@ object FriendActivityParser {
             }.distinct().take(30)
             val likes = count(block, ".vote_count, .blotter_vote_count, .blotter_rate_count, [id^=vote_up_count]")
                 ?: Regex("(?:共有\\s*)?([0-9][0-9,]*)\\s*(?:人点赞|个赞|likes?)", RegexOption.IGNORE_CASE)
-                    .find(block.select(".blotter_vote_container, .blotter_rate_details").text())?.groupValues?.get(1)
+                    .find(block.text())?.groupValues?.get(1)
             val comments = count(block, ".commentthread_count, .commentthread_count_label, .blotter_comment_count, [id^=commentthread_count]")
             val header = block.text().take(250)
             val kind = when {
@@ -52,7 +52,7 @@ object FriendActivityParser {
                     Regex("发表了.*(?:测评|评测|评价)|撰写了.*(?:测评|评测)|posted a review|wrote a review", RegexOption.IGNORE_CASE).containsMatchIn(header) -> ActivityKind.Review
                 block.selectFirst(".blotter_screenshot, .blotter_screenshot_image") != null ||
                     Regex("上传了.*截图|发布了.*截图|uploaded .*screenshots?|posted .*screenshots?", RegexOption.IGNORE_CASE).containsMatchIn(header) -> ActivityKind.Screenshot
-                Regex("现在拥有了|购买了|获得了.*游戏|now owns|purchased", RegexOption.IGNORE_CASE).containsMatchIn(header) -> ActivityKind.OwnedGame
+                Regex("现在拥有了|新拥有了|购买了|获得了.*游戏|now owns|purchased", RegexOption.IGNORE_CASE).containsMatchIn(header) -> ActivityKind.OwnedGame
                 else -> ActivityKind.Other
             }
             block.select("script, style, textarea, input, button, .commentthread_area, .blotter_comment_thread, .blotter_vote_container, .blotter_rate_details, .blotter_comment_entry, .commentthread_comment, .blotter_share, .blotter_control_container").remove()
@@ -74,13 +74,21 @@ object FriendActivityParser {
                 ActivityGame(title, url, url.toHttpUrlOrNull()?.pathSegments?.getOrNull(1)?.toIntOrNull())
             }.distinctBy { it.appId ?: it.url }
             val caption = block.selectFirst(".blotter_screenshot_caption, .blotter_screenshot_description")?.let(::paragraphs)
+            val ownedNames = if (kind == ActivityKind.OwnedGame) {
+                text.lines().flatMap { line ->
+                    if (" | " in line) line.split(" | ").map(String::trim).filter(String::isNotEmpty)
+                    else emptyList()
+                }.distinct()
+            } else emptyList()
             val body = when {
                 review != null -> text
                 !caption.isNullOrBlank() -> caption
                 kind == ActivityKind.Screenshot && images.isNotEmpty() -> ""
                 else -> text.removePrefix(author).trimStart()
             }
-            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, comments, replies)
+            val commentCount = comments?.replace(",", "")?.toIntOrNull()?.let { maxOf(it, replies.size).toString() }
+                ?: replies.size.takeIf { it > 0 }?.toString()
+            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, ownedNames)
         }
     }
 

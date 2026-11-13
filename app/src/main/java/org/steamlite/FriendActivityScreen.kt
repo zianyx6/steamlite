@@ -166,7 +166,13 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
             }
             ActivityKind.OwnedGame -> {
                 if (item.games.isNotEmpty()) item.games.forEach { ActivityGameCard(it, "已加入游戏库") }
-                else ActivityBody(item.text)
+                val linkedTitles = item.games.map { it.title }.toSet()
+                val remaining = item.ownedGameNames.filterNot { it in linkedTitles }
+                if (remaining.isNotEmpty()) {
+                    OwnedGameList(remaining)
+                } else if (item.games.isEmpty()) {
+                    ActivityBody(item.text)
+                }
             }
             ActivityKind.Other -> ActivityBody(item.text)
         }
@@ -185,7 +191,28 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
                 SteamIcon(Glyph.ChevronRight, 12.dp, AccentText)
             }
         }
-        ActivityInteractions(item)
+        ActivityInteractions(item, source?.second)
+    }
+}
+
+@Composable
+private fun OwnedGameList(names: List<String>) {
+    var expanded by remember(names) { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        names.take(if (expanded) names.size else 3).forEach { name ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SteamIcon(Glyph.Store, 15.dp, AccentText)
+                Spacer(Modifier.width(8.dp))
+                Text(name, color = Text1, fontSize = 12.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (names.size > 3) {
+            Text(if (expanded) "收起游戏" else "查看其余 ${names.size - 3} 款游戏",
+                Modifier.clickable { expanded = !expanded }.padding(vertical = 5.dp), color = AccentText, fontSize = 11.5.sp)
+        }
     }
 }
 
@@ -251,7 +278,8 @@ private fun ActivityPhotos(images: List<String>, onImage: (String) -> Unit) {
 }
 
 @Composable
-private fun ActivityInteractions(item: FriendActivity) {
+private fun ActivityInteractions(item: FriendActivity, sourceUrl: String?) {
+    val context = LocalContext.current
     var expanded by remember(item.id) { mutableStateOf(false) }
     val replies = item.replies
     val count = item.commentCount ?: replies.size.takeIf { it > 0 }?.toString()
@@ -285,6 +313,11 @@ private fun ActivityInteractions(item: FriendActivity) {
                     Modifier.clickable { expanded = !expanded }.padding(vertical = 4.dp),
                     color = AccentText, fontSize = 11.sp)
             }
+        }
+        if (sourceUrl != null && (count?.toIntOrNull() ?: 0) > replies.size) {
+            Text("在 Steam 查看完整评论",
+                Modifier.clickable { openSteamLink(context, sourceUrl) }.padding(vertical = 4.dp),
+                color = AccentText, fontSize = 11.sp)
         }
     }
 }

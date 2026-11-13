@@ -51,6 +51,22 @@ class FriendActivityTest {
     }
     @Test fun emptyFeedDoesNotInventActivity() { assertTrue(FriendActivityParser.parse("<div class='blotter_day'></div>").isEmpty()) }
 
+    @Test fun groupedOwnershipSeparatesGameNamesAndKeepsVisibleReplyCount() {
+        val card = FriendActivityParser.parse("""
+            <div class="blotter_block">
+                <p>好友新拥有了 3 款游戏</p>
+                <p>游戏甲 | 游戏乙 | 游戏丙</p>
+                <span class="commentthread_count">0</span>
+                <div class="commentthread_comment">
+                    <div class="commentthread_comment_text">恭喜</div>
+                </div>
+            </div>
+        """.trimIndent()).single()
+        assertEquals(ActivityKind.OwnedGame, card.kind)
+        assertEquals(listOf("游戏甲", "游戏乙", "游戏丙"), card.ownedGameNames)
+        assertEquals("1", card.commentCount)
+    }
+
     @Test fun postTypesAndExistingRepliesStaySeparateFromTheBody() {
         val html = """
             <div class="blotter_block" id="review">
