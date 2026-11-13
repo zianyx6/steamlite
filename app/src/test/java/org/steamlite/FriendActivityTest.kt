@@ -73,7 +73,7 @@ class FriendActivityTest {
         val posts = FriendActivityParser.parse(html)
         assertEquals(listOf(ActivityKind.Review, ActivityKind.Screenshot, ActivityKind.OwnedGame), posts.map { it.kind })
         val review = posts.first()
-        assertEquals(123, review.game?.appId)
+        assertEquals(123, review.games.single().appId)
         assertEquals("第一段\n第二段", review.text)
         assertEquals("12", review.likes)
         assertEquals("4", review.commentCount)

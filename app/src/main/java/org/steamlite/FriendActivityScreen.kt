@@ -129,7 +129,9 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
         item.links.firstOrNull { (_, url) ->
             url.startsWith("https://steamcommunity.com/") &&
                 (url.contains("/recommended/") || url.contains("sharedfiles/filedetails") || url.contains("/status/"))
-        } ?: item.links.firstOrNull { it.second != item.game?.url && !it.second.matches(Regex("https://steamcommunity.com/(id|profiles)/[^/]+/?")) }
+        } ?: item.links.firstOrNull { (_, url) ->
+            item.games.none { it.url == url } && !url.matches(Regex("https://steamcommunity.com/(id|profiles)/[^/]+/?"))
+        }
     }
     Column(
         Modifier.fillMaxWidth().clip(shape).background(Surface1).border(1.dp, Line, shape).padding(14.dp),
@@ -151,25 +153,25 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
 
         when (item.kind) {
             ActivityKind.Review -> {
-                item.game?.let { ActivityGameCard(it, "测评游戏") }
+                item.games.firstOrNull()?.let { ActivityGameCard(it, "测评游戏") }
                 if (item.text.isNotBlank()) Column(
                     Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(12.dp)
                 ) { ActivityBody(item.text) }
             }
             ActivityKind.Screenshot -> {
-                val title = item.game?.title
+                val title = item.games.firstOrNull()?.title
                 Text(if (title.isNullOrBlank()) "游戏截图" else title, color = Text1,
                     fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                if (item.images.isEmpty()) ActivityBody(item.text)
+                ActivityBody(item.text)
             }
             ActivityKind.OwnedGame -> {
-                if (item.game != null) ActivityGameCard(item.game, "已加入游戏库")
+                if (item.games.isNotEmpty()) item.games.forEach { ActivityGameCard(it, "已加入游戏库") }
                 else ActivityBody(item.text)
             }
             ActivityKind.Other -> ActivityBody(item.text)
         }
 
-        if (item.kind != ActivityKind.OwnedGame || item.game == null) {
+        if (item.kind != ActivityKind.OwnedGame || item.games.isEmpty()) {
             ActivityPhotos(item.images, onImage)
         }
         if (source != null) {

@@ -17,7 +17,7 @@ data class ActivityGame(val title: String, val url: String, val appId: Int?)
 data class FriendActivity(
     val id: String, val day: String, val text: String, val images: List<String>,
     val links: List<Pair<String, String>>, val author: String = "", val avatar: String? = null,
-    val kind: ActivityKind = ActivityKind.Other, val game: ActivityGame? = null,
+    val kind: ActivityKind = ActivityKind.Other, val games: List<ActivityGame> = emptyList(),
     val likes: String? = null, val commentCount: String? = null,
     val replies: List<ActivityReply> = emptyList()
 )
@@ -46,8 +46,7 @@ object FriendActivityParser {
                 ?: Regex("(?:共有\\s*)?([0-9][0-9,]*)\\s*(?:人点赞|个赞|likes?)", RegexOption.IGNORE_CASE)
                     .find(block.select(".blotter_vote_container, .blotter_rate_details").text())?.groupValues?.get(1)
             val comments = count(block, ".commentthread_count, .commentthread_count_label, .blotter_comment_count, [id^=commentthread_count]")
-            val header = block.selectFirst(".blotter_header, .blotter_userstatus_title")?.text()
-                .orEmpty().ifBlank { block.text().take(250) }
+            val header = block.text().take(250)
             val kind = when {
                 block.selectFirst(".blotter_review, .blotter_recommendation, a[href*=/recommended/]") != null ||
                     Regex("发表了.*(?:测评|评测|评价)|撰写了.*(?:测评|评测)|posted a review|wrote a review", RegexOption.IGNORE_CASE).containsMatchIn(header) -> ActivityKind.Review
@@ -68,19 +67,20 @@ object FriendActivityParser {
             val author = block.selectFirst("a.blotter_author_block, .blotter_author_block a[href], a.blotter_author, .blotter_header .friendLink, .blotter_header .whiteLink, a[data-miniprofile]")?.text()?.takeIf { it.isNotBlank() }
                 ?: block.select("a[href]").firstOrNull { it.text().isNotBlank() && Regex("https://steamcommunity.com/(id|profiles)/[^/?#]+/?").matches(it.absUrl("href")) }?.text().orEmpty()
             val avatar = block.selectFirst(".blotter_player_avatar img, .playerAvatar img, .avatarMedium img")?.let(::imageSource)
-            val gameLink = links.firstOrNull { (_, url) ->
+            val gameLinks = links.filter { (_, url) ->
                 url.toHttpUrlOrNull()?.let { it.host == "store.steampowered.com" && it.pathSegments.firstOrNull() == "app" } == true
             }
-            val game = gameLink?.let { (title, url) ->
+            val games = gameLinks.map { (title, url) ->
                 ActivityGame(title, url, url.toHttpUrlOrNull()?.pathSegments?.getOrNull(1)?.toIntOrNull())
-            }
+            }.distinctBy { it.appId ?: it.url }
             val caption = block.selectFirst(".blotter_screenshot_caption, .blotter_screenshot_description")?.let(::paragraphs)
             val body = when {
                 review != null -> text
                 !caption.isNullOrBlank() -> caption
+                kind == ActivityKind.Screenshot && images.isNotEmpty() -> ""
                 else -> text.removePrefix(author).trimStart()
             }
-            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, game, likes, comments, replies)
+            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, comments, replies)
         }
     }
 
