@@ -14,6 +14,7 @@ import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -517,7 +518,7 @@ fun PresenceColor(presence: Presence): Color = when (presence) {
 }
 
 @Composable
-fun PersonAvatar(initial: String, avatarUrl: String?, presence: Presence?, size: Dp = 44.dp) {
+fun PersonAvatar(initial: String, avatarUrl: String?, presence: Presence?, size: Dp = 44.dp, fallbackUrl: String? = null) {
     val shape = RoundedCornerShape(size * 0.32f)
     Box(Modifier.size(size)) {
         Box(
@@ -529,8 +530,9 @@ fun PersonAvatar(initial: String, avatarUrl: String?, presence: Presence?, size:
             contentAlignment = Alignment.Center
         ) {
             Text(initial.take(1), fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFA9B6C9))
-            if (!avatarUrl.isNullOrBlank()) {
-                SteamImage(listOf(avatarUrl), "", Modifier.fillMaxSize())
+            val urls = remember(avatarUrl, fallbackUrl) { listOfNotNull(avatarUrl, fallbackUrl).filter { it.isNotBlank() }.distinct() }
+            if (urls.isNotEmpty()) {
+                SteamImage(urls, "", Modifier.fillMaxSize())
             }
         }
         if (presence != null) {

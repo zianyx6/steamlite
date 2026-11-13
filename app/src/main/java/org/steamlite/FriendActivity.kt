@@ -20,7 +20,7 @@ data class FriendActivity(
     val kind: ActivityKind = ActivityKind.Other, val games: List<ActivityGame> = emptyList(),
     val likes: String? = null, val commentCount: String? = null,
     val replies: List<ActivityReply> = emptyList(),
-    val recommendsGame: Boolean? = null
+    val recommendsGame: Boolean? = null, val authorSteamId: Long? = null
 )
 object FriendActivityParser {
     /** Jsoup resolves an empty src to the document URL, which is HTML, not an image. */
@@ -76,9 +76,21 @@ object FriendActivityParser {
             val links = anchors.map { it.text().ifBlank { "查看 Steam 内容" } to it.absUrl("href") }
                 .filter { ChatContent.webUrl(it.second) }.distinctBy { it.second }.take(8)
             val id = block.id().ifBlank { MessageDigest.getInstance("SHA-256").digest(block.outerHtml().toByteArray()).joinToString("") { "%02x".format(it) } }
-            val author = block.selectFirst("a.blotter_author_block, .blotter_author_block a[href], a.blotter_author, .blotter_header .friendLink, .blotter_header .whiteLink, a[data-miniprofile]")?.text()?.takeIf { it.isNotBlank() }
-                ?: block.select("a[href]").firstOrNull { it.text().isNotBlank() && Regex("https://steamcommunity.com/(id|profiles)/[^/?#]+/?").matches(it.absUrl("href")) }?.text().orEmpty()
-            val avatar = block.selectFirst(".blotter_player_avatar img, .playerAvatar img, .avatarMedium img")?.let(::imageSource)
+            val authorLink = block.select("a.blotter_author_block, .blotter_author_block a[href], a.blotter_author, .blotter_header .friendLink, .blotter_header .whiteLink, a[data-miniprofile]")
+                .firstOrNull { it.text().isNotBlank() }
+                ?: anchors.firstOrNull { it.text().isNotBlank() && Regex("https://steamcommunity.com/(id|profiles)/[^/?#]+/?").matches(it.absUrl("href")) }
+            val author = authorLink?.text().orEmpty()
+            val authorSteamId = authorLink?.absUrl("href")?.toHttpUrlOrNull()
+                ?.takeIf { it.host == "steamcommunity.com" && it.pathSegments.firstOrNull() == "profiles" }
+                ?.pathSegments?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0 }
+                ?: authorLink?.attr("data-miniprofile")?.toLongOrNull()
+                    ?.takeIf { it in 1..0xffffffffL }?.plus(76561197960265728L)
+            val avatar = block.select(".blotter_player_avatar img, .blotter_avatar img, .playerAvatar img, .avatarMedium img, img.playerAvatar, img.avatarMedium")
+                .firstNotNullOfOrNull { image ->
+                    if (image.parents().any { it.className().contains("avatarframe", ignoreCase = true) } ||
+                        image.className().contains("avatarframe", ignoreCase = true)) null
+                    else imageSource(image)?.takeUnless { it.contains("/images/items/") }
+                }
             val caption = block.selectFirst(".blotter_screenshot_caption, .blotter_screenshot_description")?.let(::paragraphs)
             val ownedNames = if (kind == ActivityKind.OwnedGame) {
                 text.lines().flatMap { line ->
@@ -96,7 +108,7 @@ object FriendActivityParser {
             }
             val commentCount = comments?.replace(",", "")?.toIntOrNull()?.let { maxOf(it, replies.size).toString() }
                 ?: replies.size.takeIf { it > 0 }?.toString()
-            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, recommendsGame)
+            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, recommendsGame, authorSteamId)
         }
     }
 

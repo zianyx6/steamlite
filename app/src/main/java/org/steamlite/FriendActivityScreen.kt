@@ -29,6 +29,8 @@ fun FriendActivityScreen(model: LiteModel) {
     val error by repo.error.collectAsState()
     val more by repo.hasMore.collectAsState()
     val online by model.steam.online.collectAsState()
+    val friends by model.steam.people.collectAsState()
+    val avatars = remember(friends) { friends.associate { it.id to it.avatar } }
     var viewing by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     val active = LocalRootTabActive.current
     LaunchedEffect(active, online, model.steam.owner) { if (active && online && items.isEmpty()) repo.refresh() }
@@ -96,7 +98,7 @@ fun FriendActivityScreen(model: LiteModel) {
                                 Box(Modifier.weight(1f).height(1.dp).background(Line))
                             }
                         }
-                        ActivityCard(item) { viewing = item.images to it }
+                        ActivityCard(item, avatars[item.authorSteamId]) { viewing = item.images to it }
                         Spacer(Modifier.height(10.dp))
                     }
                 }
@@ -116,7 +118,7 @@ fun FriendActivityScreen(model: LiteModel) {
 }
 
 @Composable
-private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
+private fun ActivityCard(item: FriendActivity, friendAvatar: String?, onImage: (String) -> Unit) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(18.dp)
     val label = when (item.kind) {
@@ -139,7 +141,7 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PersonAvatar(item.author.ifBlank { "好友" }, item.avatar, null, 38.dp)
+            PersonAvatar(item.author.ifBlank { "好友" }, item.avatar, null, 38.dp, fallbackUrl = friendAvatar)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(item.author.ifBlank { "好友动态" }, color = Text1, fontSize = 14.sp,

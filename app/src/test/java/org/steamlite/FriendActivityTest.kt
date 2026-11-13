@@ -36,6 +36,23 @@ class FriendActivityTest {
         val card = FriendActivityParser.parse("""<div class="blotter_block">好友活动<img src="https://avatars.steamstatic.com/person.jpg"><img src="https://images.steamusercontent.com/ugc/photo.jpg"></div>""").single()
         assertEquals(listOf("https://images.steamusercontent.com/ugc/photo.jpg"), card.images)
     }
+
+    @Test fun avatarSkipsDecorativeFrameAndResolvesTheAuthorId() {
+        val avatar = "https://avatars.steamstatic.com/real_full.jpg"
+        val card = FriendActivityParser.parse("""
+            <div class="blotter_block">
+              <a class="blotter_author_block" href="/id/example" data-miniprofile="123">好友</a>
+              <div class="blotter_player_avatar">
+                <div class="avatarFrame"><img src="https://cdn.fastly.steamstatic.com/steamcommunity/public/images/items/1/frame.png"></div>
+                <img data-src="$avatar">
+              </div>
+              上传了截图
+            </div>
+        """.trimIndent()).single()
+        assertEquals(76561197960265851L, card.authorSteamId)
+        assertEquals(avatar, card.avatar)
+        assertTrue(card.images.isEmpty())
+    }
     @Test fun paginationCannotSendCredentialsToAnotherOriginOrEndpoint() {
         assertTrue(FriendActivityParser.allowedPage("https://steamcommunity.com/profiles/123/ajaxgetusernews/?start=10"))
         assertTrue(FriendActivityParser.allowedPage("https://steamcommunity.com/id/test/ajaxgetusernews"))
