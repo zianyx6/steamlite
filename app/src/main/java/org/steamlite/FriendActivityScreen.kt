@@ -154,9 +154,27 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
         when (item.kind) {
             ActivityKind.Review -> {
                 item.games.firstOrNull()?.let { ActivityGameCard(it, "测评游戏") }
-                if (item.text.isNotBlank()) Column(
-                    Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(12.dp)
-                ) { ActivityBody(item.text) }
+                if (item.text.isNotBlank() || item.recommendsGame != null) {
+                    Column(
+                        Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item.recommendsGame?.let { recommended ->
+                            val tint = if (recommended) MoneyText else DangerText
+                            Row(
+                                Modifier.background(tint.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                SteamIcon(if (recommended) Glyph.Check else Glyph.Close, 12.dp, tint)
+                                Text(if (recommended) "推荐" else "不推荐", color = tint, fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        ActivityBody(item.text)
+                    }
+                }
             }
             ActivityKind.Screenshot -> {
                 val title = item.games.firstOrNull()?.title

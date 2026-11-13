@@ -19,7 +19,8 @@ data class FriendActivity(
     val links: List<Pair<String, String>>, val author: String = "", val avatar: String? = null,
     val kind: ActivityKind = ActivityKind.Other, val games: List<ActivityGame> = emptyList(),
     val likes: String? = null, val commentCount: String? = null,
-    val replies: List<ActivityReply> = emptyList(), val ownedGameNames: List<String> = emptyList()
+    val replies: List<ActivityReply> = emptyList(), val ownedGameNames: List<String> = emptyList(),
+    val recommendsGame: Boolean? = null
 )
 object FriendActivityParser {
     /** Jsoup resolves an empty src to the document URL, which is HTML, not an image. */
@@ -56,6 +57,15 @@ object FriendActivityParser {
                 else -> ActivityKind.Other
             }
             block.select("script, style, textarea, input, button, .commentthread_area, .blotter_comment_thread, .blotter_vote_container, .blotter_rate_details, .blotter_comment_entry, .commentthread_comment, .blotter_share, .blotter_control_container").remove()
+            val recommendsGame = if (kind == ActivityKind.Review) {
+                val voteIcons = block.select("img").mapNotNull { image ->
+                    val indicator = listOf("src", "data-src", "alt", "class").joinToString(" ") { image.attr(it) }
+                    val vote = reviewVote(indicator) ?: return@mapNotNull null
+                    image.remove()
+                    vote
+                }
+                voteIcons.firstOrNull() ?: reviewVote(block.select(".review_box .title, .blotter_review_title").text())
+            } else null
             val review = block.selectFirst(".blotter_review_text, .blotter_recommendation_text, .review_box .content")
             val text = paragraphs(review ?: block)
             if(text.isBlank()) return@mapNotNull null
@@ -88,8 +98,14 @@ object FriendActivityParser {
             }
             val commentCount = comments?.replace(",", "")?.toIntOrNull()?.let { maxOf(it, replies.size).toString() }
                 ?: replies.size.takeIf { it > 0 }?.toString()
-            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, ownedNames)
+            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, ownedNames, recommendsGame)
         }
+    }
+
+    private fun reviewVote(text: String): Boolean? = when {
+        Regex("thumbs?[_ -]?down|not recommended|不推荐", RegexOption.IGNORE_CASE).containsMatchIn(text) -> false
+        Regex("thumbs?[_ -]?up|recommended|^推荐$", RegexOption.IGNORE_CASE).containsMatchIn(text) -> true
+        else -> null
     }
 
     private fun paragraphs(element: Element): String = element.wholeText().lines()

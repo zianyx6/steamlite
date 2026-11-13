@@ -73,6 +73,8 @@ class FriendActivityTest {
               <div class="blotter_header">好友发表了游戏测评</div>
               <a href="https://store.steampowered.com/app/123/">示例游戏</a>
               <div class="blotter_review_text">第一段<br>第二段</div>
+              <img src="https://community.fastly.steamstatic.com/public/images/userreviews/icon_thumbsDown.png">
+              <img src="https://images.steamusercontent.com/ugc/test/screenshot.jpg">
               <div class="blotter_vote_container"><span class="vote_count">12</span></div>
               <div class="commentthread_area">
                 <span class="commentthread_count_label">4 条评论</span>
@@ -91,6 +93,8 @@ class FriendActivityTest {
         val review = posts.first()
         assertEquals(123, review.games.single().appId)
         assertEquals("第一段\n第二段", review.text)
+        assertEquals(false, review.recommendsGame)
+        assertEquals(listOf("https://images.steamusercontent.com/ugc/test/screenshot.jpg"), review.images)
         assertEquals("12", review.likes)
         assertEquals("4", review.commentCount)
         assertEquals(listOf(ActivityReply("示例评论者", "这是一条回复")), review.replies)
