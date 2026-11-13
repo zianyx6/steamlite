@@ -294,5 +294,9 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
             }
         }
     }
-    viewing?.let { ImageViewer(it) { viewing = null } }
+    viewing?.let { selected ->
+        ImageViewer(media.filterNot { it.video }.map { it.src.ifBlank { it.thumb } }.distinct(), selected) {
+            viewing = null
+        }
+    }
 }

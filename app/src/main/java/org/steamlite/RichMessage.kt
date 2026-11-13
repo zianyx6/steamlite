@@ -47,7 +47,9 @@ import java.io.ByteArrayOutputStream
             else AsyncImage(part.url, "聊天图片，点击放大", Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).clickable { image = part.url }, contentScale = ContentScale.Fit, onError = { failed = true })
         }
     }
-    image?.let { ImageViewer(it) { image = null } }
+    image?.let { selected ->
+        ImageViewer(parts.filterIsInstance<ChatPart.Image>().map { it.url }.distinct(), selected) { image = null }
+    }
 }
 
 internal suspend fun readImage(url: String, baseClient: OkHttpClient = PublicImages.http): Pair<ByteArray, String> = withContext(Dispatchers.IO) {

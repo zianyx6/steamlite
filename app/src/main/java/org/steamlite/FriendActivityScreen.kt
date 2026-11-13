@@ -29,7 +29,7 @@ fun FriendActivityScreen(model: LiteModel) {
     val error by repo.error.collectAsState()
     val more by repo.hasMore.collectAsState()
     val online by model.steam.online.collectAsState()
-    var viewing by remember { mutableStateOf<String?>(null) }
+    var viewing by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     val active = LocalRootTabActive.current
     LaunchedEffect(active, online, model.steam.owner) { if (active && online && items.isEmpty()) repo.refresh() }
 
@@ -96,7 +96,7 @@ fun FriendActivityScreen(model: LiteModel) {
                                 Box(Modifier.weight(1f).height(1.dp).background(Line))
                             }
                         }
-                        ActivityCard(item) { viewing = it }
+                        ActivityCard(item) { viewing = item.images to it }
                         Spacer(Modifier.height(10.dp))
                     }
                 }
@@ -112,7 +112,7 @@ fun FriendActivityScreen(model: LiteModel) {
     }
 
     }
-    viewing?.let { ImageViewer(it) { viewing = null } }
+    viewing?.let { (images, selected) -> ImageViewer(images, selected) { viewing = null } }
 }
 
 @Composable

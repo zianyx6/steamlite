@@ -2,17 +2,14 @@ package org.steamlite
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -27,22 +24,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ImageViewer(url: String, close: () -> Unit) {
+fun ImageViewer(images: List<String>, initialUrl: String, close: () -> Unit) {
+    if (images.isEmpty()) return
+    val pager = rememberPagerState(images.indexOf(initialUrl).coerceAtLeast(0)) { images.size }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var zoom by remember(url) { mutableFloatStateOf(1f) }
-    var dx by remember(url) { mutableFloatStateOf(0f) }
-    var dy by remember(url) { mutableFloatStateOf(0f) }
-    var status by remember(url) { mutableStateOf("") }
-    var saving by remember(url) { mutableStateOf(false) }
-    var pendingBytes by remember(url) { mutableStateOf<ByteArray?>(null) }
-    var retry by remember(url) { mutableIntStateOf(0) }
-    var failed by remember(url) { mutableStateOf(false) }
-    fun reset() {
-        zoom = 1f
-        dx = 0f
-        dy = 0f
-    }
+    var status by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var pendingBytes by remember { mutableStateOf<ByteArray?>(null) }
     val destination = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/*")) { uri ->
         val data = pendingBytes
         pendingBytes = null
@@ -67,75 +56,51 @@ fun ImageViewer(url: String, close: () -> Unit) {
     Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = Bg) {
             Column(Modifier.fillMaxSize().systemBarsPadding()) {
-                Box(
-                    Modifier.weight(1f).fillMaxWidth().clipToBounds()
-                        .pointerInput(url) {
-                            detectTransformGestures { _, pan, factor, _ ->
-                                zoom = (zoom * factor).coerceIn(1f, 6f)
-                                if (zoom == 1f) reset() else {
-                                    val maxX = size.width * (zoom - 1) / 2
-                                    val maxY = size.height * (zoom - 1) / 2
-                                    dx = (dx + pan.x).coerceIn(-maxX, maxX)
-                                    dy = (dy + pan.y).coerceIn(-maxY, maxY)
-                                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ImageTool(Glyph.Back, "返回", action = close)
+                    Spacer(Modifier.weight(1f))
+                    ImageTool(Glyph.Download, "下载当前图片", !saving && !pager.isScrollInProgress) {
+                        val selectedUrl = images[pager.currentPage]
+                        saving = true
+                        status = "正在下载原图"
+                        scope.launch {
+                            try {
+                                val (data, extension) = readImage(selectedUrl)
+                                pendingBytes = data
+                                status = ""
+                                destination.launch("SteamLite-${System.currentTimeMillis()}.$extension")
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                pendingBytes = null
+                                saving = false
+                                status = "保存失败：${e.message}"
                             }
                         }
-                        .pointerInput(url) { detectTapGestures(onDoubleTap = { if (zoom > 1f) reset() else zoom = 2f }) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    key(retry) {
-                        val request = remember(url, context) {
-                            steamArtworkRequest(context, url).size(2560).build()
+                    }
+                }
+                HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
+                    val url = images[page]
+                    var retry by remember(url) { mutableIntStateOf(0) }
+                    var failed by remember(url) { mutableStateOf(false) }
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        key(retry) {
+                            val request = remember(url, context) {
+                                steamArtworkRequest(context, url).size(2560).build()
+                            }
+                            AsyncImage(request, "图片 ${page + 1} / ${images.size}", Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit, onError = { failed = true })
                         }
-                        AsyncImage(request, "查看图片", Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = zoom
-                            scaleY = zoom
-                            translationX = dx
-                            translationY = dy
-                        }, contentScale = ContentScale.Fit, onError = { failed = true; status = "图片加载失败" })
+                        if (failed) {
+                            Text("图片加载失败，点此重试",
+                                Modifier.clickable { failed = false; retry++ }.padding(16.dp),
+                                color = Text2)
+                        }
                     }
                 }
                 if (status.isNotBlank()) {
                     Text(status, Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                         color = Text2, style = MaterialTheme.typography.labelSmall)
-                }
-                Surface(
-                    Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 12.dp, vertical = 10.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Surface1,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-                ) {
-                    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ImageTool(Glyph.Close, "关闭", action = close)
-                        ImageTool(Glyph.Minus, "缩小", zoom > 1f) {
-                            zoom = (zoom / 1.5f).coerceAtLeast(1f)
-                            dx = 0f
-                            dy = 0f
-                        }
-                        ImageTool(Glyph.Plus, "放大", zoom < 6f) { zoom = (zoom * 1.5f).coerceAtMost(6f) }
-                        ImageTool(if (failed) Glyph.Refresh else Glyph.Fit, if (failed) "重试" else "适应屏幕") {
-                            reset()
-                            if (failed) { failed = false; status = ""; retry++ }
-                        }
-                        ImageTool(Glyph.Download, "保存图片", !saving) {
-                            saving = true
-                            status = "正在下载原图"
-                            scope.launch {
-                                try {
-                                    val (data, extension) = readImage(url)
-                                    pendingBytes = data
-                                    status = ""
-                                    destination.launch("SteamLite-${System.currentTimeMillis()}.$extension")
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    pendingBytes = null
-                                    saving = false
-                                    status = "保存失败：${e.message}"
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
