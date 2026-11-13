@@ -1,6 +1,8 @@
 package org.steamlite
 
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.net.Uri
 import android.text.Html
 import android.widget.Toast
@@ -14,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -23,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +46,8 @@ private fun htmlToText(html: String): String {
         doc.select("p").prepend("\\n\\n")
         doc.select("li").prepend("\\n· ")
         doc.select("h1, h2, h3").prepend("\\n\\n")
-        doc.text().replace("\\n", "\n").replace(Regex("\n{3,}"), "\n\n").trim()
+        doc.text().replace("\\n", "\n").lines().joinToString("\n") { it.trim() }
+            .replace(Regex("\n{3,}"), "\n\n").trim()
     }.getOrDefault(Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString().trim())
 }
 
@@ -203,8 +209,19 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                 // Steam store-page body, not the short sidebar blurb.
                 if (description.isNotBlank()) {
                     Spacer(Modifier.height(20.dp))
-                    Text("游戏介绍", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Text3)
-                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("游戏介绍", Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Text3)
+                        IconButton(
+                            onClick = {
+                                context.getSystemService(ClipboardManager::class.java)
+                                    .setPrimaryClip(ClipData.newPlainText("游戏介绍", description))
+                                if (android.os.Build.VERSION.SDK_INT < 33) {
+                                    Toast.makeText(context, "已复制游戏介绍", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.semantics { contentDescription = "复制游戏介绍" }
+                        ) { SteamIcon(Glyph.Copy, 18.dp, Text2) }
+                    }
                     SelectionContainer {
                         Text(description, fontSize = 12.5.sp, lineHeight = 20.sp, color = Text2)
                     }
