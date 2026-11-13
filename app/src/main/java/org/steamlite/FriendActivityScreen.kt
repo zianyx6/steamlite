@@ -125,11 +125,12 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
         ActivityKind.OwnedGame -> "购入游戏"
         ActivityKind.Other -> null
     }
-    val source = remember(item.links) {
+    val source = remember(item.links, item.games, item.kind) {
         item.links.firstOrNull { (_, url) ->
             url.startsWith("https://steamcommunity.com/") &&
                 (url.contains("/recommended/") || url.contains("sharedfiles/filedetails") || url.contains("/status/"))
         } ?: item.links.firstOrNull { (_, url) ->
+            item.kind != ActivityKind.OwnedGame &&
             item.games.none { it.url == url } && !url.matches(Regex("https://steamcommunity.com/(id|profiles)/[^/]+/?"))
         }
     }
@@ -183,14 +184,7 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
                 ActivityBody(item.text)
             }
             ActivityKind.OwnedGame -> {
-                if (item.games.isNotEmpty()) item.games.forEach { ActivityGameCard(it, "已加入游戏库") }
-                val linkedTitles = item.games.map { it.title }.toSet()
-                val remaining = item.ownedGameNames.filterNot { it in linkedTitles }
-                if (remaining.isNotEmpty()) {
-                    OwnedGameList(remaining)
-                } else if (item.games.isEmpty()) {
-                    ActivityBody(item.text)
-                }
+                if (item.games.isNotEmpty()) OwnedGameList(item.games) else ActivityBody(item.text)
             }
             ActivityKind.Other -> ActivityBody(item.text)
         }
@@ -214,21 +208,14 @@ private fun ActivityCard(item: FriendActivity, onImage: (String) -> Unit) {
 }
 
 @Composable
-private fun OwnedGameList(names: List<String>) {
-    var expanded by remember(names) { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().background(Surface2, RoundedCornerShape(12.dp)).padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        names.take(if (expanded) names.size else 3).forEach { name ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SteamIcon(Glyph.Store, 15.dp, AccentText)
-                Spacer(Modifier.width(8.dp))
-                Text(name, color = Text1, fontSize = 12.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+private fun OwnedGameList(games: List<ActivityGame>) {
+    var expanded by remember(games) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        games.take(if (expanded) games.size else 3).forEach { game ->
+            ActivityGameCard(game, "已加入游戏库")
         }
-        if (names.size > 3) {
-            Text(if (expanded) "收起游戏" else "查看其余 ${names.size - 3} 款游戏",
+        if (games.size > 3) {
+            Text(if (expanded) "收起游戏" else "查看其余 ${games.size - 3} 款游戏",
                 Modifier.clickable { expanded = !expanded }.padding(vertical = 5.dp), color = AccentText, fontSize = 11.5.sp)
         }
     }
@@ -251,21 +238,29 @@ private fun ActivityBody(text: String) {
 @Composable
 private fun ActivityGameCard(game: ActivityGame, subtitle: String) {
     val context = LocalContext.current
+    val coverUrls = remember(game.appId, game.cover) {
+        (listOfNotNull(game.cover) + game.appId?.let { portraitUrls(it) }.orEmpty()).distinct()
+    }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Surface2)
-            .clickable { openSteamLink(context, game.url) }.padding(10.dp),
+            .then(game.url?.let { url -> Modifier.clickable { openSteamLink(context, url) } } ?: Modifier)
+            .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        game.appId?.let {
-            PosterCover(it, null, Modifier.size(42.dp, 56.dp))
-            Spacer(Modifier.width(10.dp))
+        Box(Modifier.size(38.dp, 48.dp).clip(RoundedCornerShape(8.dp)).background(AccentSoft),
+            contentAlignment = Alignment.Center) {
+            SteamIcon(Glyph.Store, 17.dp, AccentText)
+            if (coverUrls.isNotEmpty()) {
+                SteamImage(coverUrls, "", Modifier.fillMaxSize())
+            }
         }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(game.title, color = Text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = Text3, fontSize = 11.sp)
         }
-        SteamIcon(Glyph.ChevronRight, 14.dp, Text3)
+        if (game.url != null) SteamIcon(Glyph.ChevronRight, 14.dp, Text3)
     }
 }
 

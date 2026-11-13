@@ -55,6 +55,9 @@ class FriendActivityTest {
         val card = FriendActivityParser.parse("""
             <div class="blotter_block">
                 <p>好友新拥有了 3 款游戏</p>
+                <a href="https://store.steampowered.com/app/123/"><img src="https://shared.fastly.steamstatic.com/cover.jpg"></a>
+                <a href="https://store.steampowered.com/sub/456/"></a>
+                <a href="https://store.steampowered.com/app/789/">游戏丙</a>
                 <p>游戏甲 | 游戏乙 | 游戏丙</p>
                 <span class="commentthread_count">0</span>
                 <div class="commentthread_comment">
@@ -63,7 +66,10 @@ class FriendActivityTest {
             </div>
         """.trimIndent()).single()
         assertEquals(ActivityKind.OwnedGame, card.kind)
-        assertEquals(listOf("游戏甲", "游戏乙", "游戏丙"), card.ownedGameNames)
+        assertEquals(listOf("游戏甲", "游戏乙", "游戏丙"), card.games.map { it.title })
+        assertEquals(123, card.games[0].appId)
+        assertEquals("https://shared.fastly.steamstatic.com/cover.jpg", card.games[0].cover)
+        assertEquals("https://store.steampowered.com/sub/456/", card.games[1].url)
         assertEquals("1", card.commentCount)
     }
 

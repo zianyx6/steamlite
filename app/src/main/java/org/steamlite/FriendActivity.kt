@@ -13,13 +13,13 @@ import java.util.concurrent.TimeUnit
 
 enum class ActivityKind { Review, Screenshot, OwnedGame, Other }
 data class ActivityReply(val author: String, val text: String)
-data class ActivityGame(val title: String, val url: String, val appId: Int?)
+data class ActivityGame(val title: String, val url: String?, val appId: Int?, val cover: String? = null)
 data class FriendActivity(
     val id: String, val day: String, val text: String, val images: List<String>,
     val links: List<Pair<String, String>>, val author: String = "", val avatar: String? = null,
     val kind: ActivityKind = ActivityKind.Other, val games: List<ActivityGame> = emptyList(),
     val likes: String? = null, val commentCount: String? = null,
-    val replies: List<ActivityReply> = emptyList(), val ownedGameNames: List<String> = emptyList(),
+    val replies: List<ActivityReply> = emptyList(),
     val recommendsGame: Boolean? = null
 )
 object FriendActivityParser {
@@ -72,17 +72,13 @@ object FriendActivityParser {
             val day = block.parents().firstOrNull { it.hasClass("blotter_day") }?.selectFirst(".blotter_day_header_date")?.text().orEmpty()
             val images = block.select("img").filter { it.parents().none { p -> p.hasClass("avatarMedium") || p.hasClass("playerAvatar") || p.hasClass("blotter_player_avatar") } }.mapNotNull(::imageSource)
                 .filterNot { it.toHttpUrlOrNull()?.let { url -> url.host.startsWith("avatars.") || url.encodedPath.startsWith("/avatars/") } == true }.distinct().take(6)
-            val links = block.select("a[href]").map { it.text().ifBlank { "查看 Steam 内容" } to it.absUrl("href") }.filter { ChatContent.webUrl(it.second) }.distinctBy { it.second }.take(8)
+            val anchors = block.select("a[href]")
+            val links = anchors.map { it.text().ifBlank { "查看 Steam 内容" } to it.absUrl("href") }
+                .filter { ChatContent.webUrl(it.second) }.distinctBy { it.second }.take(8)
             val id = block.id().ifBlank { MessageDigest.getInstance("SHA-256").digest(block.outerHtml().toByteArray()).joinToString("") { "%02x".format(it) } }
             val author = block.selectFirst("a.blotter_author_block, .blotter_author_block a[href], a.blotter_author, .blotter_header .friendLink, .blotter_header .whiteLink, a[data-miniprofile]")?.text()?.takeIf { it.isNotBlank() }
                 ?: block.select("a[href]").firstOrNull { it.text().isNotBlank() && Regex("https://steamcommunity.com/(id|profiles)/[^/?#]+/?").matches(it.absUrl("href")) }?.text().orEmpty()
             val avatar = block.selectFirst(".blotter_player_avatar img, .playerAvatar img, .avatarMedium img")?.let(::imageSource)
-            val gameLinks = links.filter { (_, url) ->
-                url.toHttpUrlOrNull()?.let { it.host == "store.steampowered.com" && it.pathSegments.firstOrNull() == "app" } == true
-            }
-            val games = gameLinks.map { (title, url) ->
-                ActivityGame(title, url, url.toHttpUrlOrNull()?.pathSegments?.getOrNull(1)?.toIntOrNull())
-            }.distinctBy { it.appId ?: it.url }
             val caption = block.selectFirst(".blotter_screenshot_caption, .blotter_screenshot_description")?.let(::paragraphs)
             val ownedNames = if (kind == ActivityKind.OwnedGame) {
                 text.lines().flatMap { line ->
@@ -90,6 +86,7 @@ object FriendActivityParser {
                     else emptyList()
                 }.distinct()
             } else emptyList()
+            val games = activityGames(anchors, ownedNames)
             val body = when {
                 review != null -> text
                 !caption.isNullOrBlank() -> caption
@@ -98,8 +95,37 @@ object FriendActivityParser {
             }
             val commentCount = comments?.replace(",", "")?.toIntOrNull()?.let { maxOf(it, replies.size).toString() }
                 ?: replies.size.takeIf { it > 0 }?.toString()
-            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, ownedNames, recommendsGame)
+            FriendActivity(id, day, body.take(5000), images, links, author, avatar, kind, games, likes, commentCount, replies, recommendsGame)
         }
+    }
+
+    private fun activityGames(anchors: List<Element>, ownedNames: List<String>): List<ActivityGame> {
+        val candidates = anchors.mapNotNull { anchor ->
+            val url = anchor.absUrl("href")
+            val link = url.toHttpUrlOrNull() ?: return@mapNotNull null
+            if (link.host != "store.steampowered.com" || !ChatContent.webUrl(url)) return@mapNotNull null
+            val category = link.pathSegments.firstOrNull()
+            if (category !in setOf("app", "sub", "bundle")) return@mapNotNull null
+            val id = link.pathSegments.getOrNull(1)?.toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            val image = anchor.selectFirst("img")
+            val title = listOf(anchor.text(), anchor.attr("title"), image?.attr("alt").orEmpty(), image?.attr("title").orEmpty())
+                .firstOrNull { it.isNotBlank() && it != "查看 Steam 内容" }.orEmpty()
+            "$category/$id" to ActivityGame(title, url, id.takeIf { category == "app" }, image?.let(::imageSource))
+        }.groupBy({ it.first }, { it.second }).values.map { variants ->
+            val game = variants.firstOrNull { it.title.isNotBlank() } ?: variants.first()
+            game.copy(cover = variants.firstNotNullOfOrNull { it.cover })
+        }
+        // A grouped post supplies its titles in the same order as its capsule links.
+        // Only pair by position when the lists match and existing labels agree.
+        if (ownedNames.size == candidates.size && candidates.indices.all {
+                candidates[it].title.isBlank() || candidates[it].title.equals(ownedNames[it], ignoreCase = true)
+            }) {
+            return candidates.mapIndexed { index, game -> game.copy(title = ownedNames[index]) }
+        }
+        val named = candidates.filter { it.title.isNotBlank() }
+        val knownTitles = named.map { it.title.lowercase() }.toSet()
+        return named + ownedNames.filterNot { it.lowercase() in knownTitles }
+            .map { ActivityGame(it, null, null) }
     }
 
     private fun reviewVote(text: String): Boolean? = when {
