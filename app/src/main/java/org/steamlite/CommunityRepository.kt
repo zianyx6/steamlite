@@ -36,7 +36,7 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
         } } }
         scope.launch { steam.groupEvents.collect { event -> if(selected == (event.chatGroupId to event.chatId) && steam.online.value) {
             val message = GroupMessage("${event.timestamp}:${event.ordinal}", event.steamidSender, event.message, event.timestamp.toLong() * 1000)
-            groupMessages.value = (groupMessages.value + message).distinctBy { it.id }.sortedBy { it.time }.takeLast(500)
+            mergeChannelMessages(listOf(message))
         } } }
     }
     fun refreshEmotes() {
@@ -107,11 +107,20 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
             check(response.result == EResult.OK) { response.result.toString() }
             if(owner != steam.owner || request != selection || !steam.online.value) return
             val history = response.body.messagesList.filter { !it.deleted }.map { GroupMessage("${it.serverTimestamp}:${it.ordinal}", 76561197960265728L + Integer.toUnsignedLong(it.sender), it.message, it.serverTimestamp.toLong() * 1000) }
-            groupMessages.value = (history + groupMessages.value).distinctBy { it.id }.sortedBy { it.time }.takeLast(500)
+            mergeChannelMessages(history)
             channelStatus.value = "最近 ${history.size} 条 · ${if(response.body.moreAvailable) "更多历史可在 Steam 查看" else "已同步"}"
         } catch(e: CancellationException) { throw e } catch(e: Exception) { if(request == selection) channelStatus.value = "频道同步失败，可重试（${e.javaClass.simpleName}）" }
     }
     fun leaveChannel() { selection++; selected = null; groupMessages.value = emptyList() }
+    private fun mergeChannelMessages(incoming: List<GroupMessage>) {
+        val merged = groupMessages.value.associateBy { it.id }.toMutableMap()
+        for (message in incoming) {
+            if (message.text.isBlank()) continue
+            val text = merged[message.id]?.let { ChatContent.confirmedText(it.text, message.text) } ?: message.text
+            merged[message.id] = message.copy(text = text)
+        }
+        groupMessages.value = merged.values.sortedBy { it.time }.takeLast(500)
+    }
     fun sendGroup(group: Long, channel: Long, text: String, accepted: () -> Unit) {
         if(sending.value || text.isBlank() || !steam.online.value) return
         val owner = steam.owner; val request = selection; sending.value = true
@@ -120,7 +129,8 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
             check(response.result == EResult.OK) { response.result.toString() }
             if(owner == steam.owner && request == selection && steam.online.value) {
                 val b = response.body
-                groupMessages.value = (groupMessages.value + GroupMessage("${b.serverTimestamp}:${b.ordinal}", owner.toLong(), b.modifiedMessage.ifBlank { text }, b.serverTimestamp.toLong() * 1000)).distinctBy { it.id }.sortedBy { it.time }.takeLast(500)
+                val confirmed = ChatContent.confirmedText(text, b.modifiedMessage)
+                mergeChannelMessages(listOf(GroupMessage("${b.serverTimestamp}:${b.ordinal}", owner.toLong(), confirmed, b.serverTimestamp.toLong() * 1000)))
                 channelStatus.value = "Steam 已接受（未确认已读）"
                 accepted()
             }

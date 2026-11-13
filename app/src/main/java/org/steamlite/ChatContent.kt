@@ -13,7 +13,7 @@ object ChatContent {
     // NOTE: the emote name class must exclude ':' and 'ː' explicitly. 'ː' (U+02D0) is
     // a *letter* (Lm), so \p{L} would swallow "ːaːːbː" into one name and break every
     // message with two emotes side by side.
-    private val tokens = Regex("""\[img\](https://[^\s\[]+)\[/img\]|\[url=(https?://[^\s\]]+)\]([^\[]*)\[/url\]|\[img\s+src=["']?(https://[^\s"'\]]+)["']?\s*\](?:\[/img\])?|\[emoticon\]([^\[\]]+)\[/emoticon\]|\[sticker\s+type="([^"]+)"[^\]]*\]\[/sticker\]|https?://[^\s<>\[\]]+|[:ː][^\s:ː\[\]]{1,80}[:ː]""", RegexOption.IGNORE_CASE)
+    private val tokens = Regex("""\[img\](https://[^\s\[]+)\[/img\]|\[url=(https?://[^\s\]]+)\]([^\[]*)\[/url\]|\[img\s+src=["']?(https://[^\s"'\]]+)["']?\s*\](?:\[/img\])?|\[emoticon\]([^\[\]]+)\[/emoticon\]|\[sticker\s+[^\]]*?\btype\s*=\s*"([^"\[\]\r\n]+)"[^\]]*\](?:\s*\[/sticker\])?|https?://[^\s<>\[\]]+|[:ː][^\s:ː\[\]]{1,80}[:ː]""", RegexOption.IGNORE_CASE)
     fun webUrl(url: String): Boolean = runCatching { val u = URI(url); u.scheme.lowercase() in setOf("https", "http") && !u.host.isNullOrBlank() && u.rawUserInfo == null }.getOrDefault(false)
     fun mediaUrl(url: String): Boolean = runCatching {
         val u = URI(url); val host = u.host?.lowercase().orEmpty()
@@ -22,6 +22,12 @@ object ChatContent {
     }.getOrDefault(false)
     fun emoteUrl(name: String) = "https://community.akamai.steamstatic.com/economy/emoticon/" + URLEncoder.encode(name.trim(':', 'ː'), "UTF-8").replace("+", "%20")
     fun stickerUrl(name: String) = "https://community.akamai.steamstatic.com/economy/sticker/" + URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+    fun isStickerImage(url: String): Boolean = mediaUrl(url) && URI(url).path.startsWith("/economy/sticker/")
+    fun hasSticker(text: String): Boolean = tokens.findAll(text).any { it.groupValues[6].isNotBlank() }
+    fun stickerUrls(url: String): List<String> = listOf(url, url.replace("community.akamai.", "community.fastly."), url.replace("community.akamai.", "community.cloudflare.")).distinct()
+
+    fun confirmedText(original: String, modified: String): String =
+        if (modified.isBlank() || (hasSticker(original) && !hasSticker(modified))) original else modified
     fun emoteUrls(name: String): List<String> {
         val normal = emoteUrl(name)
         val large = normal.replace("/economy/emoticon/", "/economy/emoticonlarge/")
@@ -69,7 +75,7 @@ object ChatContent {
                 m.groupValues[6].isNotBlank() -> ChatPart.Image(stickerUrl(m.groupValues[6]))
                 value.startsWith("http", true) -> {
                     val url = value.trimEnd('.', ',', '!', '，', '。')
-                    if(mediaUrl(url) && (Regex("(?i)\\.(png|jpe?g|gif|webp)(?:[?#].*)?$").containsMatchIn(url) || URI(url).path.startsWith("/ugc/"))) ChatPart.Image(url)
+                    if(mediaUrl(url) && (isStickerImage(url) || Regex("(?i)\\.(png|jpe?g|gif|webp)(?:[?#].*)?$").containsMatchIn(url) || URI(url).path.startsWith("/ugc/"))) ChatPart.Image(url)
                     else if(webUrl(url)) ChatPart.Link(value, url) else ChatPart.Plain(value)
                 }
                 else -> ChatPart.Emote(value.trim(':', 'ː'))

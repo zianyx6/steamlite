@@ -392,7 +392,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 scope.launch {
                     android.util.Log.i("SteamLiteReceive", "um msg len=${body.message.length} echo=${body.localEcho} type=${body.chatEntryType}")
                     if (online.value && owner == accountOwner && body.message.isNotBlank()) {
-                        dao.put(Message("$accountOwner:${body.steamidFriend}:${body.rtime32ServerTimestamp}:${body.ordinal}", accountOwner, body.steamidFriend, body.message, body.rtime32ServerTimestamp.toLong() * 1000, body.localEcho, if(body.localEcho) "其他 Steam 客户端已发送" else "已接收"))
+                        dao.putFromSteam(Message("$accountOwner:${body.steamidFriend}:${body.rtime32ServerTimestamp}:${body.ordinal}", accountOwner, body.steamidFriend, body.message, body.rtime32ServerTimestamp.toLong() * 1000, body.localEcho, if(body.localEcho) "其他 Steam 客户端已发送" else "已接收"))
                         val receivedAt = body.rtime32ServerTimestamp.toLong() * 1000
                         recentSessions.update { recordRecentMessage(it, body.steamidFriend, receivedAt, !body.localEcho && readingPeer != body.steamidFriend) }
                         if (!body.localEcho && readingPeer == body.steamidFriend) markConversationRead(body.steamidFriend, receivedAt)
@@ -630,7 +630,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         if (result.isSuccess) {
             val body = result.getOrThrow().body
             android.util.Log.i("SteamLiteSend", "sent len=${text.length} bbcode=$bbcode modified len=${body.modifiedMessage.length}")
-            dao.put(message.copy(id = "${message.owner}:$peer:${body.serverTimestamp}:${body.ordinal}", text = body.modifiedMessage.ifBlank { text }, time = body.serverTimestamp.toLong() * 1000, status = "Steam 已接受（未确认已读）"))
+            dao.putFromSteam(message.copy(id = "${message.owner}:$peer:${body.serverTimestamp}:${body.ordinal}", text = ChatContent.confirmedText(text, body.modifiedMessage), time = body.serverTimestamp.toLong() * 1000, status = "Steam 已接受（未确认已读）"))
             dao.deleteMessage(message.id)
         } else {
             val failure = result.exceptionOrNull()
@@ -657,7 +657,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
             // through would blank out the real "[sticker ...]" row we already have.
             if(item.message.isBlank()) continue
             val mine = (accountOwner.toLong() and 0xffffffffL) == Integer.toUnsignedLong(item.accountid)
-            dao.put(Message("$accountOwner:$peer:${item.timestamp}:${item.ordinal}", accountOwner, peer, item.message, item.timestamp.toLong() * 1000, mine, "Steam 已同步"))
+            dao.putFromSteam(Message("$accountOwner:$peer:${item.timestamp}:${item.ordinal}", accountOwner, peer, item.message, item.timestamp.toLong() * 1000, mine, "Steam 已同步"))
         }
     }
     val hasMoreHistory = MutableStateFlow(false)
@@ -686,7 +686,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                     // the locally stored "[sticker ...]" text.
                     if(item.message.isBlank()) return@forEach
                     val senderIsMe = (accountOwner.toLong() and 0xffffffffL) == (item.accountid.toLong() and 0xffffffffL)
-                    dao.put(Message("$accountOwner:$peer:${item.timestamp}:${item.ordinal}", accountOwner, peer, item.message, item.timestamp.toLong() * 1000, senderIsMe, "Steam 历史"))
+                    dao.putFromSteam(Message("$accountOwner:$peer:${item.timestamp}:${item.ordinal}", accountOwner, peer, item.message, item.timestamp.toLong() * 1000, senderIsMe, "Steam 历史"))
                 }
                 val earliest = messages.minWithOrNull(compareBy({ it.timestamp.toLong() and 0xffffffffL }, { it.ordinal.toLong() and 0xffffffffL }))
                 val next = earliest?.let { it.timestamp to it.ordinal }

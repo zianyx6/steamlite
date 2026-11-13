@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,7 +85,7 @@ fun ImageViewer(url: String, close: () -> Unit) {
                 ) {
                     key(retry) {
                         val request = remember(url, context) {
-                            ImageRequest.Builder(context).data(url).size(2560).build()
+                            steamArtworkRequest(context, url).size(2560).build()
                         }
                         AsyncImage(request, "查看图片", Modifier.fillMaxSize().graphicsLayer {
                             scaleX = zoom

@@ -39,6 +39,12 @@ class SessionVault(context: Context) {
     @Query("SELECT id, owner, peer, text, MAX(time) AS time, outgoing, status FROM Message WHERE owner = :owner GROUP BY peer ORDER BY time DESC") fun conversations(owner: String): Flow<List<Message>>
     @Query("SELECT * FROM (SELECT * FROM Message WHERE owner = :owner AND peer = :peer ORDER BY time DESC LIMIT :limit) ORDER BY time ASC") fun messages(owner: String, peer: Long, limit: Int = 500): Flow<List<Message>>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(message: Message)
+    @Query("SELECT text FROM Message WHERE id = :id") suspend fun messageText(id: String): String?
+    @Transaction suspend fun putFromSteam(message: Message) {
+        val current = messageText(message.id)
+        val text = if (current == null) message.text else ChatContent.confirmedText(current, message.text)
+        if (text.isNotBlank()) put(message.copy(text = text))
+    }
     @Query("DELETE FROM Message WHERE id = :id") suspend fun deleteMessage(id: String)
     /** Older builds persisted sticker rows as blank text; those show up as empty bubbles. */
     @Query("DELETE FROM Message WHERE text = ''") suspend fun deleteEmptyMessages()

@@ -49,4 +49,12 @@ class ChatContentTest {
         assertEquals(ChatPart.Image(ChatContent.stickerUrl("Test Name")), sticker)
         assertEquals(listOf("a", "b"), ChatContent.parse("ːaːːbː").filterIsInstance<ChatPart.Emote>().map { it.name })
     }
+    @Test fun stickerSurvivesPlainOrEmptySteamAcknowledgement() {
+        val url = ChatContent.stickerUrl("Beat Mix")
+        val original = ChatContent.stickerCode("Beat Mix")
+        assertEquals(original, ChatContent.confirmedText(original, ""))
+        assertEquals(original, ChatContent.confirmedText(original, "/sticker Beat Mix"))
+        assertEquals(listOf(ChatPart.Image(url)), ChatContent.parse("[sticker limit=\"0\" type=\"Beat Mix\"] [/sticker]"))
+        assertEquals(listOf(ChatPart.Image(url)), ChatContent.parse(url))
+    }
 }

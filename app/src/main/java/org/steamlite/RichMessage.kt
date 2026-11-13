@@ -38,9 +38,14 @@ import java.io.ByteArrayOutputStream
     } }
     if(annotated.isNotBlank()) Text(annotated, inlineContent = inlines)
     parts.filterIsInstance<ChatPart.Image>().forEach { part ->
-        var failed by remember(part.url) { mutableStateOf(false) }
-        if(failed) Row { TextButton(onClick = { image = part.url }) { Text("查看原图") }; TextButton(onClick = { failed = false }) { Text("重试") } }
-        else AsyncImage(part.url, "聊天图片，点击放大", Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).clickable { image = part.url }, contentScale = ContentScale.Fit, onError = { failed = true })
+        if (ChatContent.isStickerImage(part.url)) {
+            SteamImage(ChatContent.stickerUrls(part.url), "Steam 贴纸",
+                Modifier.size(116.dp).clickable { image = part.url }, ContentScale.Fit)
+        } else {
+            var failed by remember(part.url) { mutableStateOf(false) }
+            if(failed) Row { TextButton(onClick = { image = part.url }) { Text("查看原图") }; TextButton(onClick = { failed = false }) { Text("重试") } }
+            else AsyncImage(part.url, "聊天图片，点击放大", Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).clickable { image = part.url }, contentScale = ContentScale.Fit, onError = { failed = true })
+        }
     }
     image?.let { ImageViewer(it) { image = null } }
 }

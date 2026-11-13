@@ -16,8 +16,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+
+internal fun steamArtworkRequest(context: android.content.Context, url: String): ImageRequest.Builder =
+    ImageRequest.Builder(context).data(url).apply {
+        // An APNG drawable has one callback and playback state. Give each visible sticker its own instance.
+        if (ChatContent.isStickerImage(url)) memoryCachePolicy(CachePolicy.DISABLED)
+    }
 
 /**
  * Falls back through [urls] on decode/network errors instead of showing a blank
@@ -40,8 +49,10 @@ private fun FallbackImage(
     Box(modifier, contentAlignment = Alignment.Center) {
         val url = urls.getOrNull(index)
         if (url != null) {
+            val context = LocalContext.current
+            val request = remember(context, url) { steamArtworkRequest(context, url).build() }
             AsyncImage(
-                model = url,
+                model = request,
                 contentDescription = description,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = scale,
