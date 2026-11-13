@@ -22,7 +22,13 @@ object ChatContent {
     }.getOrDefault(false)
     fun emoteUrl(name: String) = "https://community.akamai.steamstatic.com/economy/emoticon/" + URLEncoder.encode(name.trim(':', 'ː'), "UTF-8").replace("+", "%20")
     fun stickerUrl(name: String) = "https://community.akamai.steamstatic.com/economy/sticker/" + URLEncoder.encode(name, "UTF-8").replace("+", "%20")
-    fun emoteUrls(name: String): List<String> = listOf(emoteUrl(name), emoteUrl(name).replace("community.akamai.", "community.fastly."), emoteUrl(name).replace("community.akamai.", "community.cloudflare."))
+    fun emoteUrls(name: String): List<String> {
+        val normal = emoteUrl(name)
+        val large = normal.replace("/economy/emoticon/", "/economy/emoticonlarge/")
+        return listOf(large, normal).flatMap { url ->
+            listOf(url, url.replace("community.akamai.", "community.fastly."), url.replace("community.akamai.", "community.cloudflare."))
+        }
+    }
 
     /** Display markup returned by Steam; sending uses the /sticker command instead. */
     fun stickerCode(name: String): String {

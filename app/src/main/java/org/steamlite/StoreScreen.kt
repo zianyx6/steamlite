@@ -176,7 +176,32 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                         )
                     }
                 }
-                item { SectionHeader("Steam 精选折扣") }
+                if (model.recommendations.isNotEmpty()) {
+                    item { SectionHeader("Steam 精选") }
+                    items(model.recommendations, key = { "featured:${it.id}" }, contentType = { "game" }) { game ->
+                        val inWishlist = game.id in wishIdSet
+                        GameRow(
+                            gameId = game.id, image = game.image, title = game.name,
+                            meta = "Steam 精选", price = game.price.ifBlank { "暂无报价" },
+                            discount = game.discount, original = game.original,
+                            onClick = { model.details(game.id) },
+                            trailing = {
+                                HeartButton(on = inWishlist, enabled = online && !wishBusy && !inWishlist) {
+                                    model.changeWishlist(game.id, true)
+                                }
+                            }
+                        )
+                    }
+                }
+                item {
+                    SectionHeader("折扣推荐") {
+                        TextLink("更多折扣") {
+                            query = ""
+                            model.searchOptions = StoreSearchOptions(discountOnly = true)
+                            model.search("", true)
+                        }
+                    }
+                }
             }
 
             if (!model.loading && ordered.isEmpty() && model.error.isEmpty() && wishError.isEmpty()) {

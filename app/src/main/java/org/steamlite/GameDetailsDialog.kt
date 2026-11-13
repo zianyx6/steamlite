@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -77,6 +78,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
     val original = if (discount > 0) priceObj?.optString("initial_formatted").orEmpty() else ""
     val release = data.optJSONObject("release_date")?.optString("date").orEmpty()
     val name = data.optString("name")
+    var viewing by remember(data) { mutableStateOf<String?>(null) }
 
     // Trailers and screenshots share one strip so the top of the sheet is never empty.
     val media = remember(data) {
@@ -97,7 +99,9 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                     val shot = shots.getJSONObject(index)
                     val thumb = shot.optString("path_thumbnail")
                     val full = shot.optString("path_full")
-                    if (thumb.isNotBlank()) add(Media(full, thumb, false))
+                    if (thumb.isNotBlank() || full.isNotBlank()) {
+                        add(Media(full.ifBlank { thumb }, thumb.ifBlank { full }, false))
+                    }
                 }
             }
         }
@@ -136,7 +140,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                                 .background(Surface2)
                                 .clickable {
                                     if (item.video) playVideo(item.src)
-                                    else if (item.src.isNotBlank()) open(item.src)
+                                    else viewing = item.src.ifBlank { item.thumb }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -201,12 +205,9 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                     Spacer(Modifier.height(20.dp))
                     Text("游戏介绍", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Text3)
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        description,
-                        fontSize = 12.5.sp,
-                        lineHeight = 20.sp,
-                        color = Text2
-                    )
+                    SelectionContainer {
+                        Text(description, fontSize = 12.5.sp, lineHeight = 20.sp, color = Text2)
+                    }
                 }
 
                 if (languages.isNotBlank()) {
@@ -276,4 +277,5 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
             }
         }
     }
+    viewing?.let { ImageViewer(it) { viewing = null } }
 }

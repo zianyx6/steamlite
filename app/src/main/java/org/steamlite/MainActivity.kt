@@ -82,6 +82,8 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
         }
     }
     var games by mutableStateOf<List<Game>>(emptyList())
+    var recommendations by mutableStateOf<List<Game>>(emptyList())
+        private set
     var loading by mutableStateOf(false)
     var error by mutableStateOf("")
     var info by mutableStateOf("尚未加载")
@@ -118,6 +120,7 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
         try {
             if(searchQuery.isBlank() && searchOptions == StoreSearchOptions()) {
                 val result = store.featured(refresh); games = result.games; totalResults = games.size; hasMoreResults = false
+                recommendations = result.recommendations
                 isFeatured = true
                 info = "${if(result.cached) "缓存（可能离线）" else "Steam 实时响应"} · ${time(result.time)}"
             } else {

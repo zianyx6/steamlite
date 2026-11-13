@@ -1,6 +1,7 @@
 package org.steamlite
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 
 data class Game(val id: Int, val name: String, val image: String, val price: String, val discount: Int, val original: String = "", val cents: Long? = null, val release: String = "", val positivePercent: Int? = null)
-data class StoreResult(val games: List<Game>, val cached: Boolean, val time: Long)
+data class StoreResult(val games: List<Game>, val cached: Boolean, val time: Long, val recommendations: List<Game> = emptyList())
 class StoreRepository(private val dao: CacheDao) {
     val observations = PriceObservations(dao)
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).callTimeout(35, TimeUnit.SECONDS).build()
@@ -33,18 +34,46 @@ class StoreRepository(private val dao: CacheDao) {
         catch (e: Exception) { cached?.let { Triple(it.body, true, it.time) } ?: throw e }
     }
     suspend fun featured(refresh: Boolean): StoreResult = withContext(Dispatchers.Default) {
-        val (body, cached, time) = fetch("https://store.steampowered.com/api/featuredcategories?cc=pk&l=schinese", refresh)
-        val items = JSONObject(body).optJSONObject("specials")?.optJSONArray("items") ?: error("Steam 折扣数据不可用")
-        val games = (0 until items.length()).map { index ->
-            val item = items.getJSONObject(index)
-            val cents = item.optLong("final_price"); val original = item.optLong("original_price")
+        kotlinx.coroutines.coroutineScope {
+            val highlights = async {
+                try {
+                    val (body, _, _) = fetch("https://store.steampowered.com/api/featured?cc=pk&l=schinese", refresh)
+                    val json = JSONObject(body)
+                    listOf("featured_win", "featured_mac", "featured_linux")
+                        .flatMap { catalogGames(json.optJSONArray(it)) }.distinctBy { it.id }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            val (body, cached, time) = fetch("https://store.steampowered.com/api/featuredcategories?cc=pk&l=schinese", refresh)
+            val categories = JSONObject(body)
+            val games = listOf("specials", "top_sellers", "new_releases")
+                .flatMap { catalogGames(categories.optJSONObject(it)?.optJSONArray("items")) }
+                .filter { it.discount > 0 }.distinctBy { it.id }
+            if (!cached) games.forEach { game ->
+                game.cents?.let { observations.record(game.id, it, time, "Steam featuredcategories · PK · USD") }
+            }
+            StoreResult(games, cached, time, highlights.await())
+        }
+    }
+    private fun catalogGames(items: org.json.JSONArray?): List<Game> {
+        if (items == null) return emptyList()
+        return (0 until items.length()).mapNotNull { index ->
+            val item = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optInt("id").takeIf { it > 0 } ?: return@mapNotNull null
+            val name = item.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (item.optInt("type") != 0) return@mapNotNull null
             val currency = item.optString("currency")
+            val cents = item.optLong("final_price", -1).takeIf { it >= 0 && currency.isNotBlank() }
+            val original = item.optLong("original_price", -1)
             val image = item.optString("large_capsule_image").ifBlank { item.optString("header_image") }
-                .ifBlank { "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.getInt("id")}/header.jpg" }
-            Game(item.getInt("id"), item.getString("name"), image, "$currency %.2f".format(cents / 100.0), item.optInt("discount_percent"), if(original > cents) "$currency %.2f".format(original / 100.0) else "", if(currency == "USD") cents else null)
-        }.filter { it.discount > 0 }.distinctBy { it.id }
-        if(!cached) games.forEach { game -> game.cents?.let { observations.record(game.id, it, time, "Steam featuredcategories · PK · USD") } }
-        StoreResult(games, cached, time)
+            Game(id, name, image, cents?.let { "$currency %.2f".format(it / 100.0) }.orEmpty(),
+                item.optInt("discount_percent").coerceIn(0, 100),
+                if (cents != null && original > cents) "$currency %.2f".format(original / 100.0) else "",
+                cents.takeIf { currency == "USD" })
+        }
     }
     suspend fun search(query: String, refresh: Boolean): StoreResult {
         val (body, cached, time) = fetch("https://store.steampowered.com/api/storesearch/?term=${URLEncoder.encode(query, "UTF-8")}&l=schinese&cc=pk", refresh)

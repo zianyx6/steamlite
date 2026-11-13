@@ -34,7 +34,7 @@ enum class Glyph {
     Store, Heart, Chat, User, Search, Filter,
     ChevronRight, ChevronDown, Back, More, Send, Emoji,
     Refresh, Alert, Info, Close, Copy, Bell, Shield, Logout,
-    Users, Check, Plus, Mark, Image, Phone, Pin, Sun, Moon, Qr
+    Users, Check, Plus, Mark, Image, Phone, Pin, Sun, Moon, Qr, Download, Minus, Fit
 }
 
 @Composable
@@ -57,6 +57,21 @@ fun SteamIcon(
             drawRoundRect(tint, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u, r * u), style = stroke)
 
         when (glyph) {
+            Glyph.Download -> {
+                line(12f, 3f, 12f, 15f)
+                line(7f, 10f, 12f, 15f)
+                line(12f, 15f, 17f, 10f)
+                line(4f, 17f, 4f, 21f)
+                line(4f, 21f, 20f, 21f)
+                line(20f, 21f, 20f, 17f)
+            }
+            Glyph.Minus -> line(5f, 12f, 19f, 12f)
+            Glyph.Fit -> {
+                line(4f, 9f, 4f, 4f); line(4f, 4f, 9f, 4f)
+                line(15f, 4f, 20f, 4f); line(20f, 4f, 20f, 9f)
+                line(4f, 15f, 4f, 20f); line(4f, 20f, 9f, 20f)
+                line(15f, 20f, 20f, 20f); line(20f, 20f, 20f, 15f)
+            }
             Glyph.Sun -> {
                 circle(12f, 12f, 4f)
                 for (step in 0..7) {
