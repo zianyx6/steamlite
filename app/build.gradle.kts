@@ -12,7 +12,7 @@ kotlin {
 android {
     namespace = "org.steamlite"
     compileSdk = 37
-    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 103; versionName = "1.0.3"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
+    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 104; versionName = "1.0.4"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
     val releaseKey = System.getenv("STEAMLITE_KEYSTORE")
     if (!releaseKey.isNullOrBlank()) signingConfigs.create("distribution") {
         storeFile = file(releaseKey)
@@ -35,6 +35,13 @@ android {
 androidComponents {
     beforeVariants(selector().all()) {
         it.hostTests.getValue(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE).enable = true
+    }
+    onVariants(selector().withBuildType("release")) {
+        // Generated messages embed the descriptors used at runtime.
+        it.packaging.resources.excludes.addAll(
+            "in/dragonbra/javasteam/protobufs/**/*.proto",
+            "google/protobuf/*.proto",
+        )
     }
 }
 

@@ -24,8 +24,28 @@
     public static *** from(...);
 }
 
-# JCA resolves Bouncy Castle provider implementations dynamically.
--keep class org.bouncycastle.** { *; }
+# Bouncy Castle builds reflective service names from enclosing class names.
+# Keep those names and class identities while allowing unused code to shrink.
+-keep,allowshrinking class org.bouncycastle.**
+
+# Keep the registration and service constructors reached through reflection.
+-keep,allowoptimization class org.bouncycastle.** extends org.bouncycastle.jcajce.provider.util.AlgorithmProvider {
+    public <init>();
+}
+-keep,allowoptimization class org.bouncycastle.** extends java.security.** {
+    public <init>(...);
+}
+-keep,allowoptimization class org.bouncycastle.** extends javax.crypto.** {
+    public <init>(...);
+}
+# These legacy provider entries use Bouncy Castle's own SPI classes.
+-keep,allowoptimization class org.bouncycastle.** extends org.bouncycastle.x509.X509StoreSpi {
+    public <init>();
+}
+-keep,allowoptimization class org.bouncycastle.** extends org.bouncycastle.x509.X509StreamParserSpi {
+    public <init>();
+}
+-keep class org.bouncycastle.jce.provider.BrokenJCEBlockCipher$* { *; }
 
 # Application diagnostics filter JavaSteam logs by these class names.
 -keepnames class in.dragonbra.javasteam.steam.CMClient
