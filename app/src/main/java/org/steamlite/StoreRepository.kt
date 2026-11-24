@@ -20,16 +20,19 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
     val observations = PriceObservations(dao)
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).callTimeout(35, TimeUnit.SECONDS).build()
     private val locks = ConcurrentHashMap<String, Mutex>()
-    private suspend fun fetch(url: String, refresh: Boolean, json: Boolean = true): Triple<String, Boolean, Long> = locks.getOrPut(url) { Mutex() }.withLock { fetchInternal(url, refresh, json) }
-    private suspend fun fetchInternal(url: String, refresh: Boolean, json: Boolean): Triple<String, Boolean, Long> = withContext(Dispatchers.IO) {
-        val cached = dao.cached(url)
+    private suspend fun fetch(url: String, refresh: Boolean, json: Boolean = true, region: StoreRegion? = null): Triple<String, Boolean, Long> {
+        val key = region?.let { "store:${it.key}:$url" } ?: url
+        return locks.getOrPut(key) { Mutex() }.withLock { fetchInternal(url, key, refresh, json) }
+    }
+    private suspend fun fetchInternal(url: String, key: String, refresh: Boolean, json: Boolean): Triple<String, Boolean, Long> = withContext(Dispatchers.IO) {
+        val cached = dao.cached(key)
         if (!refresh && cached != null && System.currentTimeMillis() - cached.time < 300000) return@withContext Triple(cached.body, true, cached.time)
         try {
             http.newCall(Request.Builder().url(url).build()).execute().use {
                 check(it.isSuccessful) { "HTTP ${it.code}" }
                 val body = it.body?.string() ?: error("空响应")
                 if (json) JSONObject(body) else check(org.jsoup.Jsoup.parse(body).selectFirst(".apphub_AppName") != null) { "Steam 附加详情暂不可用" }
-                val now = System.currentTimeMillis(); dao.cache(CachedResponse(url, body, now)); Triple(body, false, now)
+                val now = System.currentTimeMillis(); dao.cache(CachedResponse(key, body, now)); Triple(body, false, now)
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { cached?.let { Triple(it.body, true, it.time) } ?: throw e }
@@ -39,7 +42,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
             val region = currentRegion()
             val highlights = async {
                 try {
-                    val (body, _, _) = fetch("https://store.steampowered.com/api/featured?cc=${region.country}&l=schinese", refresh)
+                    val (body, _, _) = fetch("https://store.steampowered.com/api/featured?cc=${region.country}&l=schinese", refresh, region = region)
                     val json = JSONObject(body)
                     listOf("featured_win", "featured_mac", "featured_linux")
                         .flatMap { catalogGames(json.optJSONArray(it), region) }.distinctBy { it.id }
@@ -49,7 +52,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
                     emptyList()
                 }
             }
-            val (body, cached, time) = fetch("https://store.steampowered.com/api/featuredcategories?cc=${region.country}&l=schinese", refresh)
+            val (body, cached, time) = fetch("https://store.steampowered.com/api/featuredcategories?cc=${region.country}&l=schinese", refresh, region = region)
             val categories = JSONObject(body)
             val games = listOf("specials", "top_sellers", "new_releases")
                 .flatMap { catalogGames(categories.optJSONObject(it)?.optJSONArray("items"), region) }
@@ -79,7 +82,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
     }
     suspend fun search(query: String, refresh: Boolean): StoreResult {
         val region = currentRegion()
-        val (body, cached, time) = fetch("https://store.steampowered.com/api/storesearch/?term=${URLEncoder.encode(query, "UTF-8")}&l=schinese&cc=${region.country}", refresh)
+        val (body, cached, time) = fetch("https://store.steampowered.com/api/storesearch/?term=${URLEncoder.encode(query, "UTF-8")}&l=schinese&cc=${region.country}", refresh, region = region)
         val items = JSONObject(body).optJSONArray("items") ?: error("商店返回格式不受支持")
         return StoreResult((0 until items.length()).map { index ->
             val item = items.getJSONObject(index); val price = item.optJSONObject("price"); val initial = price?.optInt("initial") ?: 0; val final = price?.optInt("final") ?: 0
@@ -92,7 +95,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
         val region = currentRegion()
         val term = URLEncoder.encode(query, "UTF-8")
         val url = "https://store.steampowered.com/search/results/?term=$term&start=$start&count=20&infinite=1&cc=${region.country}&l=schinese&sort_by=${URLEncoder.encode(options.order,"UTF-8")}&category1=${options.category}&specials=${if(options.discountOnly) "1" else ""}"
-        val (body, cached, time) = fetch(url, refresh)
+        val (body, cached, time) = fetch(url, refresh, region = region)
         val json = JSONObject(body)
         check(json.optInt("success") == 1 || json.optBoolean("success")) { "Steam 搜索返回失败" }
         val games = StoreSearchParser.games(json.optString("results_html"))
@@ -101,7 +104,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
     }
     suspend fun details(id: Int): JSONObject = withContext(Dispatchers.Default) {
         val region = currentRegion()
-        val (body, cached, time) = fetch("https://store.steampowered.com/api/appdetails?appids=$id&cc=${region.country}&l=schinese", false)
+        val (body, cached, time) = fetch("https://store.steampowered.com/api/appdetails?appids=$id&cc=${region.country}&l=schinese", false, region = region)
         val root = JSONObject(body).getJSONObject(id.toString()); check(root.optBoolean("success")) { "详情不可用" }
         val data = root.getJSONObject("data"); val price = data.optJSONObject("price_overview")
         if(!cached && price?.optString("currency") == region.currency && price.has("final")) observations.record(id, price.getLong("final"), time, "Steam appdetails · ${region.label}", region)
@@ -110,7 +113,7 @@ class StoreRepository(private val dao: CacheDao, private val steam: SteamConnect
     internal suspend fun detailSupplement(id: Int): DetailSupplement = withContext(Dispatchers.Default) {
         require(id > 0)
         val region = currentRegion()
-        val (html) = fetch("https://store.steampowered.com/app/$id/?cc=${region.country}&l=schinese", false, json = false)
+        val (html) = fetch("https://store.steampowered.com/app/$id/?cc=${region.country}&l=schinese", false, json = false, region = region)
         GameDetailsData.supplement(html)
     }
     suspend fun wishlist(steamId: String): List<Int> {
