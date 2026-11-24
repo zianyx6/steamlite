@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">Steam Lite</title>
+  <desc id="desc">原生 Android Steam 客户端。商店、游戏库、好友与动态。</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2c"/><stop offset="1" stop-color="#0b1019"/></linearGradient>
+    <linearGradient id="accent" x2="1" y2="1"><stop stop-color="#91c8ff"/><stop offset="1" stop-color="#438df5"/></linearGradient>
+  </defs>
+  <rect width="1200" height="320" rx="28" fill="url(#bg)"/>
+  <g fill="none" stroke="#27415e"><circle cx="1090" cy="160" r="230"/><circle cx="1090" cy="160" r="174"/><circle cx="1090" cy="160" r="118"/></g>
+  <rect x="64" y="61" width="54" height="5" rx="2.5" fill="#80bdff"/>
+  <text x="64" y="147" fill="#f0f6ff" font-family="Segoe UI,Arial,sans-serif" font-size="68" font-weight="700" letter-spacing="-2">Steam Lite</text>
+  <text x="66" y="197" fill="#a6b9d2" font-family="Microsoft YaHei,PingFang SC,sans-serif" font-size="24">把商店、游戏库和好友，放进口袋。</text>
+  <text x="66" y="259" fill="#7189a6" font-family="Segoe UI,Arial,sans-serif" font-size="15" letter-spacing="3">NATIVE ANDROID · OPEN SOURCE</text>
+  <g transform="translate(857 66)">
+    <rect width="210" height="188" rx="38" fill="#15273d" stroke="#355674"/>
+    <rect x="35" y="35" width="59" height="49" rx="15" fill="url(#accent)"/>
+    <rect x="108" y="35" width="67" height="49" rx="15" fill="#355474"/>
+    <rect x="35" y="98" width="59" height="55" rx="15" fill="#355474"/>
+    <path d="M121 99h40a15 15 0 0 1 15 15v17a15 15 0 0 1-15 15h-19l-18 13v-14a15 15 0 0 1-17-15v-16a15 15 0 0 1 14-15Z" fill="url(#accent)"/>
+    <circle cx="130" cy="123" r="3" fill="#163455"/><circle cx="143" cy="123" r="3" fill="#163455"/><circle cx="156" cy="123" r="3" fill="#163455"/>
+  </g>
+</svg>
