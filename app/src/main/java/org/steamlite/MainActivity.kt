@@ -44,7 +44,7 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
     var openChatRequests by mutableIntStateOf(0)
     val store = StoreRepository(db.dao())
     val wishlist = WishlistRepository(steam, db.dao())
-    val community = CommunityRepository(steam, viewModelScope)
+    val community = CommunityRepository(steam, viewModelScope, db.dao())
     val activity = FriendActivityRepository(steam, viewModelScope)
     val imageUploader = ChatImageUploader(steam)
     var syncing by mutableStateOf(false); private set
@@ -174,7 +174,7 @@ class MainActivity : ComponentActivity() {
         setContent { SteamTheme { LiteApp(model) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); if(intent.getBooleanExtra("open_chat", false)) model.openChatRequests++ }
-    override fun onResume() { super.onResume(); model.notifications.appVisible = true }
+    override fun onResume() { super.onResume(); model.notifications.appVisible = true; model.steam.resumeSession() }
     override fun onPause() { model.notifications.appVisible = false; super.onPause() }
     override fun onStop() {
         if(model.steam.voice.state.value.phase in setOf("preparing", "ringing", "connecting", "connected")) model.steam.voice.hangup()
@@ -192,6 +192,8 @@ fun LiteApp(model: LiteModel = viewModel()) {
     var statusSheet by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val online by model.steam.online.collectAsState()
+    val hasSession by model.steam.hasSession.collectAsState()
+    val connectionBusy by model.steam.busy.collectAsState()
     fun open(url: String) { openSteamLink(context, url) }
     fun selectTab(index: Int) {
         if (index == tab) return
@@ -200,7 +202,9 @@ fun LiteApp(model: LiteModel = viewModel()) {
         tab = index
     }
 
-    LaunchedEffect(online) { if (online) context.startForegroundService(Intent(context, ConnectionService::class.java)) }
+    LaunchedEffect(online, hasSession, connectionBusy) {
+        if (online || hasSession || connectionBusy) runCatching { context.startForegroundService(Intent(context, ConnectionService::class.java)) }
+    }
     LaunchedEffect(online) { if (!online && model.steam.owner.isBlank()) model.wishlist.clearVisible() }
 
     val inChat by remember { derivedStateOf { tab == 2 && peerId != null } }

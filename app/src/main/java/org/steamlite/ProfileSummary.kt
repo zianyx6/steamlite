@@ -36,125 +36,21 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
-fun MeScreen(
-    model: LiteModel,
-    onOpenStatus: () -> Unit
-) {
-    val repo = model.community
-    val stats by repo.library.collectAsState()
-    val libraryStatus by repo.libraryStatus.collectAsState()
+internal fun AccountSettingsScreen(model: LiteModel, onOpenStatus: () -> Unit, onBack: () -> Unit) {
     val online by model.steam.online.collectAsState()
-    val selfAvatar by model.steam.selfAvatar.collectAsState()
+    val hasSession by model.steam.hasSession.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
     val context = LocalContext.current
     val appVersion = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     var aboutSheet by remember { mutableStateOf(false) }
-    val active = LocalRootTabActive.current
-    LaunchedEffect(active, online, model.steam.owner) { if (active && online && stats == null) repo.refreshLibrary() }
-
-    val owner = model.steam.owner
-    val name = model.steam.personaName().ifBlank { "我的 Steam" }
-
-    fun copyId() {
-        if (owner.isBlank()) return
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Steam ID", owner))
-        scope.launch { snackbar.showSnackbar("已复制 Steam ID") }
-    }
-
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
-        ) {
-            item {
-                PageHeader("我的") {
-                    val dark = LocalSteamDark.current
-                    IconSquare(
-                        if (dark) Glyph.Sun else Glyph.Moon,
-                        LocalSteamThemeToggle.current,
-                        label = if (dark) "切换到浅色模式" else "切换到深色模式"
-                    )
-                }
-            }
-
-            if (online) {
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 18.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            Modifier.size(54.dp).clip(RoundedCornerShape(17.dp))
-                                .background(Brush.linearGradient(listOf(Color(0x424C9BF5), Color(0x1A4C9BF5)))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                name.take(1),
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentText
-                            )
-                            if (selfAvatar.isNotBlank()) {
-                                AsyncImage(
-                                    model = selfAvatar,
-                                    contentDescription = name,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(13.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Text1, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                Modifier.clip(RoundedCornerShape(8.dp)).clickable { copyId() }.padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(owner, fontSize = 11.5.sp, color = Text3, maxLines = 1)
-                                Spacer(Modifier.width(6.dp))
-                                SteamIcon(Glyph.Copy, 12.dp, Text3, 1.8f)
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    StatsCard(
-                        count = stats?.count?.toString() ?: "—",
-                        countSub = when {
-                            stats == null -> "尚未同步"
-                            stats!!.priced > 0 -> "已获取 ${stats!!.priced} 款报价"
-                            stats!!.pricing -> "正在获取报价"
-                            else -> "报价暂不可用"
-                        },
-                        hours = stats?.let { String.format(Locale.US, "%,.0f", it.games.sumOf { g -> g.minutes } / 60.0) } ?: "—",
-                        hoursSub = stats?.let { String.format(Locale.US, "%.1f 小时 / 2 周", it.games.sumOf { g -> g.recent } / 60.0) },
-                        value = stats?.takeIf { it.priced > 0 }?.let { String.format(Locale.US, "\$%,.2f", it.cents / 100.0) } ?: "—",
-                        valueSub = "PK 商店现价合计",
-                        recent = stats?.let { String.format(Locale.US, "%.1f", it.games.sumOf { g -> g.recent } / 60.0) } ?: "—",
-                        recentSub = "近两周游玩"
-                    )
-                }
-
-                if (libraryStatus.isNotEmpty() && (libraryStatus.contains("失败") || libraryStatus.contains("正在"))) {
-                    item {
-                        StatusBanner(
-                            libraryStatus,
-                            if (libraryStatus.contains("失败")) Tone.Warn else Tone.Info,
-                        )
-                    }
-                }
-            } else {
-                item { LoginCard(model) }
-            }
-
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp)) {
+            item { PageHeader("设置", leading = { IconSquare(Glyph.Back, onBack, label = "返回个人主页") }) }
             item { SettingsLabel("账号与数据") }
             item {
                 SettingsGroup {
-                    SettingsRow(Glyph.Refresh, "连接状态", value = if (online) "已连接" else "未连接", onClick = onOpenStatus)
+                    SettingsRow(Glyph.Refresh, "连接状态", value = if (online) "已连接" else if (hasSession) "正在恢复" else "未登录", onClick = onOpenStatus)
                     SettingsRow(Glyph.Refresh, if (model.syncing) "同步中…" else "同步全部数据", value = null, showDivider = false,
                         onClick = if (online && !model.syncing) ({ model.syncAll() }) else null)
                 }
@@ -229,7 +125,7 @@ private fun SettingsLabel(text: String) {
 }
 
 @Composable
-private fun StatsCard(
+internal fun StatsCard(
     count: String,
     countSub: String,
     hours: String,
@@ -258,7 +154,7 @@ private fun StatsCard(
 }
 
 @Composable
-private fun LoginCard(model: LiteModel) {
+internal fun LoginCard(model: LiteModel) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val guard by model.steam.guard.collectAsState()

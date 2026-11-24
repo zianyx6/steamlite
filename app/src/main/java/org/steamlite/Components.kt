@@ -111,11 +111,12 @@ fun GhostButton(
 // ---------------------------------------------------------------- app chrome
 
 @Composable
-fun PageHeader(title: String, trailing: (@Composable () -> Unit)? = null) {
+fun PageHeader(title: String, leading: (@Composable () -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leading != null) { leading(); Spacer(Modifier.width(10.dp)) }
         MiuixText(title, Modifier.weight(1f), color = Text1, style = MiuixTheme.textStyles.title1)
         trailing?.invoke()
     }

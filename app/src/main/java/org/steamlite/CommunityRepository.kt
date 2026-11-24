@@ -13,7 +13,7 @@ data class GroupChannel(val id: Long, val name: String)
 data class SteamGroup(val id: Long, val name: String, val members: Int, val avatar: String?, val channels: List<GroupChannel>, val avatarUrls: List<String> = emptyList(), val memberIds: List<Long> = emptyList())
 data class GroupMessage(val id: String, val sender: Long, val text: String, val time: Long)
 
-class CommunityRepository(private val steam: SteamConnection, private val scope: CoroutineScope) {
+class CommunityRepository(private val steam: SteamConnection, private val scope: CoroutineScope, private val dao: CacheDao) {
     val library = MutableStateFlow<LibraryStats?>(null)
     val libraryStatus = MutableStateFlow("")
     val emoticons = MutableStateFlow<List<String>>(emptyList())
@@ -28,12 +28,34 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
     private var libraryJob: Job? = null
     private var groupJob: Job? = null
     private var emoteJob: Job? = null
+    private var libraryOwner = ""
+    private var lastLibraryFetch = 0L
     init {
-        scope.launch { steam.online.collect { online -> if(!online) {
+        scope.launch { combine(steam.online, steam.sessionOwner, steam.hasSession) { online, owner, remembered -> Triple(online, owner, remembered) }.collectLatest { (online, owner, remembered) ->
+            if (owner != libraryOwner) {
+                libraryJob?.cancel()
+                val previous = libraryOwner
+                libraryOwner = owner
+                lastLibraryFetch = 0L
+                library.value = null
+                if (!remembered && owner.isBlank() && previous.isNotBlank()) dao.deleteCache("owned-library:$previous")
+                if (owner.isNotBlank() && remembered) {
+                    val cached = withContext(Dispatchers.IO) { dao.cached("owned-library:$owner") }
+                    if (owner == steam.owner && library.value == null) cached?.let {
+                        library.value = OwnedLibrary.decode(owner, it.body)
+                        if (library.value != null) libraryStatus.value = "已保存的游戏库 · ${time(it.time)}"
+                    }
+                }
+            }
+            if(!online) {
             libraryJob?.cancel(); groupJob?.cancel(); emoteJob?.cancel(); selection++
-            library.value = null; groups.value = emptyList(); emoticons.value = emptyList(); groupMessages.value = emptyList(); selected = null
-            libraryStatus.value = "请登录后同步游戏库"; groupStatus.value = "请登录后同步群组"; emoteStatus.value = "请登录后同步表情"
-        } } }
+            library.value = library.value?.copy(pricing = false)
+            if (!remembered) { library.value = null; groups.value = emptyList(); emoticons.value = emptyList() }
+            groupMessages.value = emptyList(); selected = null
+            libraryStatus.value = if (remembered) "连接恢复后可继续同步游戏库" else "请登录后同步游戏库"
+            groupStatus.value = "连接 Steam 后同步群组"; emoteStatus.value = "连接 Steam 后同步表情"
+            } else if (library.value == null || System.currentTimeMillis() - lastLibraryFetch > 300000) refreshLibrary()
+        } }
         scope.launch { steam.groupEvents.collect { event -> if(selected == (event.chatGroupId to event.chatId) && steam.online.value) {
             val message = GroupMessage("${event.timestamp}:${event.ordinal}", event.steamidSender, event.message, event.timestamp.toLong() * 1000)
             mergeChannelMessages(listOf(message))
@@ -64,7 +86,10 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
             check(response.result == EResult.OK) { response.result.toString() }
             check(owner == steam.owner && steam.online.value)
             val games = response.body.gamesList.map { OwnedGame(it.appid, it.name, it.playtimeForever.toLong().coerceAtLeast(0), it.playtime2Weeks.toLong().coerceAtLeast(0)) }
+            lastLibraryFetch = System.currentTimeMillis()
             library.value = LibraryStats(response.body.gameCount, games)
+            libraryOwner = owner
+            saveLibrary(owner)
             var sum = 0L; var priced = 0
             for(chunk in games.map { it.id }.chunked(80)) {
                 val quotes = steam.wishlistGames(chunk)
@@ -74,11 +99,18 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
                 libraryStatus.value = "游戏库已同步 · 正在估算现价 $priced / ${games.size}"
             }
             library.value = library.value?.copy(pricing = false)
+            saveLibrary(owner)
             libraryStatus.value = "Steam 游戏库 · ${time(System.currentTimeMillis())}"
         } catch(e: CancellationException) { throw e } catch(e: Exception) {
             library.value = library.value?.copy(pricing = false)
+            if (owner == steam.owner) saveLibrary(owner)
             libraryStatus.value = if (e is PriceRateLimited) "游戏库已同步；Steam 暂时限制价格查询，已保留部分估价，请稍后重试" else if(library.value == null) "游戏库读取失败，请重试（${e.javaClass.simpleName}）" else "游戏库已同步；部分现价未能获取，可重试"
         } }
+    }
+    private suspend fun saveLibrary(owner: String) {
+        if (owner != steam.owner) return
+        val stats = library.value ?: return
+        runCatching { withContext(Dispatchers.IO) { dao.cache(CachedResponse("owned-library:$owner", OwnedLibrary.encode(owner, stats), System.currentTimeMillis())) } }
     }
     fun refreshGroups() {
         if(!steam.online.value || groupJob?.isActive == true) return

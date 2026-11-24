@@ -14,6 +14,10 @@ import javax.crypto.spec.GCMParameterSpec
 
 class SessionVault(context: Context) {
     private val prefs = context.getSharedPreferences("session", Context.MODE_PRIVATE)
+    private val transportPrefs = context.getSharedPreferences("connection", Context.MODE_PRIVATE)
+    val loginId: Int = transportPrefs.getInt("login_id", 0).takeIf { it > 0 } ?: java.security.SecureRandom().nextInt(Int.MAX_VALUE - 1).plus(1).also {
+        check(transportPrefs.edit().putInt("login_id", it).commit()) { "无法保存设备登录标识" }
+    }
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         return (store.getKey("steam-session", null) as? SecretKey) ?: KeyGenerator.getInstance("AES", "AndroidKeyStore").apply {
@@ -22,7 +26,7 @@ class SessionVault(context: Context) {
     }
     fun save(value: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-        prefs.edit().putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).putString("data", Base64.encodeToString(cipher.doFinal(value.toByteArray()), Base64.NO_WRAP)).apply()
+        check(prefs.edit().putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).putString("data", Base64.encodeToString(cipher.doFinal(value.toByteArray()), Base64.NO_WRAP)).commit()) { "无法保存 Steam 会话" }
     }
     fun read(): String? = runCatching {
         val data = prefs.getString("data", null) ?: return null
@@ -49,6 +53,7 @@ class SessionVault(context: Context) {
     /** Older builds persisted sticker rows as blank text; those show up as empty bubbles. */
     @Query("DELETE FROM Message WHERE text = ''") suspend fun deleteEmptyMessages()
     @Query("SELECT * FROM CachedResponse WHERE url = :url") suspend fun cached(url: String): CachedResponse?
+    @Query("DELETE FROM CachedResponse WHERE url = :url") suspend fun deleteCache(url: String)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun cache(value: CachedResponse)
     @Query("DELETE FROM Message") suspend fun clearMessages()
 }

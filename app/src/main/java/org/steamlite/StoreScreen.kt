@@ -40,6 +40,14 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
     var max by rememberSaveable { mutableStateOf("") }
 
     val online by model.steam.online.collectAsState()
+    val hasSession by model.steam.hasSession.collectAsState()
+    val library by model.community.library.collectAsState()
+    val libraryStatus by model.community.libraryStatus.collectAsState()
+    val ownedIds = remember(library?.games) { library?.games?.map { it.id }?.toSet().orEmpty() }
+    val waitingForLibrary = model.isFeatured && hasSession && library == null
+    val highlights = remember(model.recommendations, ownedIds, hasSession, waitingForLibrary) {
+        if (waitingForLibrary) emptyList() else model.recommendations.filterNot { hasSession && it.id in ownedIds }.take(8)
+    }
     val wish by model.wishlist.snapshot.collectAsState()
     val wishGames by model.wishlist.games.collectAsState()
     val wishBusy by model.wishlist.mutating.collectAsState()
@@ -50,25 +58,25 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
     LaunchedEffect(active) {
         if (active && model.games.isEmpty() && !model.loading && model.error.isBlank()) model.search(model.searchQuery)
     }
-    LaunchedEffect(active, online) { if (active && online) model.wishlist.refresh() }
+    LaunchedEffect(active, online) { if (active && online) { model.wishlist.refresh(); if (library == null) model.community.refreshLibrary() } }
 
     val minCents = min.toDoubleOrNull()?.times(100)
     val maxCents = max.toDoubleOrNull()?.times(100)
     val games = model.games
     val minPositive = model.searchOptions.minPositive
-    val ordered = remember(games, minCents, maxCents, minPositive, sortPrice) {
+    val ordered = remember(games, minCents, maxCents, minPositive, sortPrice, ownedIds, hasSession, waitingForLibrary, model.isFeatured) {
         val selected = games.filter { game ->
             val cents = game.cents
             val inRange = cents == null || ((minCents == null || cents >= minCents) && (maxCents == null || cents <= maxCents))
-            inRange && (minPositive == 0 || (game.positivePercent ?: -1) >= minPositive)
+            !waitingForLibrary && !(model.isFeatured && hasSession && game.id in ownedIds) && inRange && (minPositive == 0 || (game.positivePercent ?: -1) >= minPositive)
         }
         if (sortPrice) selected.sortedBy { it.cents ?: Long.MAX_VALUE } else selected
     }
     val wishIds = wish?.ids.orEmpty()
     val wishIdSet = remember(wishIds) { wishIds.toSet() }
-    val wishDiscounts = remember(wishIds, wishGames) {
+    val wishDiscounts = remember(wishIds, wishGames, ownedIds, waitingForLibrary) {
         wishIds.mapNotNull { wishGames[it] }
-            .filter { it.discount > 0 }
+            .filter { !waitingForLibrary && it.discount > 0 && it.id !in ownedIds }
             .sortedByDescending { it.discount }
             .take(6)
     }
@@ -79,7 +87,7 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 28.dp + LocalFloatingNavigationPadding.current)
         ) {
             item {
-                PageHeader("折扣首页")
+                PageHeader("商店")
             }
 
             item {
@@ -115,33 +123,10 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                 }
             }
 
-            item {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    SteamChip("全部折扣", !sortPrice && model.searchOptions == StoreSearchOptions()) {
-                        model.searchOptions = StoreSearchOptions()
-                        sortPrice = false
-                        min = ""; max = ""
-                        query = ""
-                        model.search("", true)
-                    }
-                    SteamChip("仅折扣", model.searchOptions.discountOnly) {
-                        model.searchOptions = model.searchOptions.copy(discountOnly = !model.searchOptions.discountOnly)
-                        model.search(query, true)
-                    }
-                    SteamChip("好评 ≥ 80%", model.searchOptions.minPositive > 0) {
-                        model.searchOptions = model.searchOptions.copy(
-                            minPositive = if (model.searchOptions.minPositive > 0) 0 else 80
-                        )
-                        model.search(query, true)
-                    }
-                    SteamChip("价格升序", sortPrice) { sortPrice = !sortPrice }
-                }
-            }
-
             item { MetaLine(model.info, Glyph.Info) }
+            if (waitingForLibrary) item {
+                MetaLine(if (libraryStatus.contains("失败")) libraryStatus else "正在读取游戏库，以隐藏已拥有游戏", Glyph.Info)
+            }
 
             if (model.loading || model.detailLoading) {
                 item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 10.dp), color = Accent, trackColor = Surface3) }
@@ -159,9 +144,8 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
             }
 
             if (model.isFeatured) {
-                if (model.recommendations.isNotEmpty()) {
+                if (highlights.isNotEmpty()) {
                     item {
-                        val highlights = model.recommendations.take(8)
                         val pager = rememberPagerState { highlights.size }
                         SectionHeader("今日精选") { Text("${pager.currentPage + 1} / ${highlights.size}", fontSize = 11.sp, color = Text3) }
                         HorizontalPager(pager, pageSpacing = 12.dp, key = { highlights[it].id }) { index ->
@@ -184,10 +168,10 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                 }
             }
 
-            if (!model.loading && ordered.isEmpty() && model.error.isEmpty() && wishError.isEmpty()) {
+            if (!model.loading && !waitingForLibrary && ordered.isEmpty() && model.error.isEmpty() && wishError.isEmpty()) {
                 item {
-                    EmptyState(glyph = Glyph.Search, title = "没有符合条件的商品",
-                        body = "试着关掉一些筛选条件，或换一个中文游戏名。", action = "清除筛选",
+                    EmptyState(glyph = Glyph.Search, title = if (model.isFeatured && hasSession) "暂无未拥有的推荐游戏" else "没有符合条件的商品",
+                        body = "可搜索其他游戏，或调整筛选条件。", action = "清除筛选",
                         onAction = { model.searchOptions = StoreSearchOptions(); sortPrice = false; min = ""; max = ""; query = ""; model.search("", true) })
                 }
             }

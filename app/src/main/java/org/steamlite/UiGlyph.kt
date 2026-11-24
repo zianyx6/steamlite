@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 enum class Glyph {
     Store, Heart, Chat, User, Search, Filter,
     ChevronRight, ChevronDown, Back, More, Send, Emoji,
-    Refresh, Alert, Info, Close, Copy, Bell, Shield, Logout,
+    Refresh, Alert, Info, Close, Copy, Bell, Shield, Logout, Settings,
     Users, Check, Plus, Mark, Image, Phone, Pin, Sun, Moon, Qr, Download
 }
 
@@ -57,6 +57,20 @@ fun SteamIcon(
             drawRoundRect(tint, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u, r * u), style = stroke)
 
         when (glyph) {
+            Glyph.Settings -> {
+                circle(12f, 12f, 3f)
+                val gear = Path().apply {
+                    for (i in 0..47) {
+                        val angle = (i % 48) * Math.PI / 24 - Math.PI / 2
+                        val radius = if (i % 6 in 1..3) 10f else 7.6f
+                        val x = (12 + kotlin.math.cos(angle) * radius).toFloat() * u
+                        val y = (12 + kotlin.math.sin(angle) * radius).toFloat() * u
+                        if (i == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                    close()
+                }
+                drawPath(gear, tint, style = stroke)
+            }
             Glyph.Download -> {
                 line(12f, 3f, 12f, 15f)
                 line(7f, 10f, 12f, 15f)

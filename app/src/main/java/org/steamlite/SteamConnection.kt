@@ -191,6 +191,8 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     private val storeWeb = StoreWebClient(this)
     val status = MutableStateFlow("未登录")
     val online = MutableStateFlow(false)
+    val hasSession = MutableStateFlow(false)
+    val sessionOwner = MutableStateFlow("")
     val voice = SteamVoiceController(client.getHandler(SteamUnifiedMessages::class.java)!!, manager, scope, { owner }, { online.value })
     val busy = MutableStateFlow(false)
     val loginSucceeded = MutableStateFlow(false)
@@ -214,13 +216,18 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     private var recentJob: Job? = null
     val guard = MutableStateFlow("")
     val historyStatus = MutableStateFlow("")
-    var owner = ""; private set
+    var owner: String
+        get() = sessionOwner.value
+        private set(value) { sessionOwner.value = value }
     val steamId: String get() = owner
     private var account = ""
     private var token = ""
     private var password = ""
     private var active = false
     private var retry = 0
+    private var reconnectJob: Job? = null
+    private var preferDirectory = false
+    private var networkAvailable = true
     private var code: CompletableFuture<String>? = null
     private var authenticationJob: Job? = null
     private val loginHandshake = SteamLoginHandshake()
@@ -358,10 +365,20 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                             user.logOn(LogOnDetails().apply {
                                 this.username = credentials.account
                                 accessToken = credentials.token
-                                loginID = 149
+                                loginID = vault.loginId
                                 chatMode = ChatMode.NEW_STEAM_CHAT
                                 uiMode = EUIMode.MobileChat
                             })
+                        }
+                        watchdog?.cancel()
+                        watchdog = scope.launch {
+                            delay(30000)
+                            synchronized(loginHandshake) {
+                                if (isAuthenticating(attempt, transport) && !online.value) {
+                                    status.value = "登录响应超时，正在重新连接"
+                                    disconnectTransport(logOff = false)
+                                }
+                            }
                         }
                     }
                 }.onFailure {
@@ -377,6 +394,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
             }
         } }
         manager.subscribe(LoggedOnCallback::class.java) { callback ->
+            android.util.Log.i("SteamLiteSession", "logon result=${callback.result}")
             val signedIn = synchronized(loginHandshake) {
                 val steamId = client.steamID
                 // The network may already have disconnected while this result was queued.
@@ -393,6 +411,19 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 scope.launch { runCatching { withTimeout(20000) { personaChat.requestFriendPersonaStates(`in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesChatSteamclient.CChat_RequestFriendPersonaStates_Request.getDefaultInstance()).await() } } }
             }
         }
+        manager.subscribe(LoggedOffCallback::class.java) { event -> synchronized(loginHandshake) {
+            android.util.Log.i("SteamLiteSession", "logged_off result=${event.result}")
+            if (!active || loginHandshake.closing.value) return@subscribe
+            online.value = false
+            if (SessionRecovery.revoked(event.result)) {
+                token = ""; hasSession.value = false; owner = ""; vault.clear()
+                endLogin("Steam 登录凭据已失效，请重新登录")
+            } else {
+                preferDirectory = true
+                status.value = "Steam 会话中断，正在恢复连接"
+                disconnectTransport(logOff = false)
+            }
+        } }
         manager.subscribe(FriendsListCallback::class.java) {
             updateFriends()
             (0 until friends.getFriendCount()).map { friends.getFriendByIndex(it) }.filter { friends.getFriendRelationship(it) == EFriendRelationship.Friend }.chunked(100).forEach { ids -> friends.requestFriendInfo(ids) }
@@ -457,22 +488,16 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
             voice.disconnect()
             online.value = false
             when {
-                !active -> busy.value = false
+                !active || !networkAvailable -> busy.value = false
                 !fallbackTried -> {
                     fallbackTried = true
+                    preferDirectory = true
                     status.value = "节点连接失败，正在查询 Steam 服务器目录"
                     openTransport(useDirectory = true)
                 }
                 token.isNotEmpty() || loginHandshake.approved != null -> {
-                    val attempt = generation
                     status.value = "连接中断，正在重连"
-                    val wait = minOf(60000L, 2000L shl minOf(retry++, 5))
-                    scope.launch {
-                        delay(wait)
-                        synchronized(loginHandshake) {
-                            if (active && generation == attempt && loginHandshake.transport == null) connect()
-                        }
-                    }
+                    scheduleReconnect()
                 }
                 else -> endLogin("连接失败，请重试")
             }
@@ -482,6 +507,8 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 val json = JSONObject(saved)
                 account = json.getString("account")
                 token = json.getString("token")
+                hasSession.value = token.isNotBlank()
+                owner = json.optString("steamId").takeIf { it.matches(Regex("[0-9]{17}")) } ?: SessionRecovery.cachedOwner(token)
                 connect()
             } }
         }
@@ -589,20 +616,31 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     private fun canStartLogin() = !active && !online.value && loginHandshake.transport == null
 
     private fun finishLogon(result: EResult, steamId: SteamID?, logon: SteamLoginHandshake.Logon): Boolean {
+        watchdog?.cancel()
         if (result != EResult.OK) {
-            if (!logon.persist && result in setOf(EResult.InvalidPassword, EResult.Expired, EResult.Revoked, EResult.AccessDenied)) {
+            if (SessionRecovery.transient(result)) {
+                if (logon.persist) loginHandshake.approve(logon.credentials)
+                preferDirectory = true
+                status.value = "Steam 暂时无法登录，正在重试（$result）"
+                disconnectTransport(logOff = false)
+                return false
+            }
+            if (!logon.persist && SessionRecovery.revoked(result)) {
                 token = ""
+                hasSession.value = false
+                owner = ""
                 vault.clear()
             }
             endLogin("登录失败：$result")
             return false
         }
         val credentials = logon.credentials
-        if (logon.persist) {
+        run {
             val saved = runCatching {
-                vault.save(JSONObject().put("account", credentials.account).put("token", credentials.token).toString())
+                vault.save(JSONObject().put("account", credentials.account).put("token", credentials.token)
+                    .put("steamId", checkNotNull(steamId).convertToUInt64().toString()).toString())
             }
-            if (saved.isFailure) {
+            if (saved.isFailure && logon.persist) {
                 endLogin("无法保存 Steam 会话，请重试")
                 return false
             }
@@ -610,6 +648,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         account = credentials.account
         token = credentials.token
         owner = checkNotNull(steamId).convertToUInt64().toString()
+        hasSession.value = true
         online.value = true
         retry = 0
         status.value = "已连接 Steam"
@@ -645,7 +684,18 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         qrLogin.value = false
     }
     fun resumeSession() = synchronized(loginHandshake) {
-        if (token.isNotBlank() && canStartLogin()) connect()
+        if (networkAvailable && token.isNotBlank() && !online.value && loginHandshake.transport == null && closingTransport?.isActive != true && openingTransport?.isActive != true) connect()
+    }
+
+    fun networkChanged(available: Boolean) = synchronized(loginHandshake) {
+        networkAvailable = available
+        if (available) resumeSession()
+        else if (active && (hasSession.value || loginHandshake.approved != null)) {
+            online.value = false
+            status.value = "网络不可用，等待恢复连接"
+            reconnectJob?.cancel()
+            disconnectTransport(logOff = false)
+        }
     }
 
     fun probeConnection() = synchronized(loginHandshake) {
@@ -664,6 +714,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         clearConcurrentGuard()
         watchdog?.cancel()
         authenticationJob?.cancel()
+        reconnectJob?.cancel()
         code?.cancel(true)
         code = null
         password = ""
@@ -676,8 +727,21 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     }
 
     private fun connect() {
+        reconnectJob?.cancel()
         active = true; busy.value = true; fallbackTried = false; status.value = "正在连接 Steam"
-        openTransport(useDirectory = false)
+        openTransport(useDirectory = preferDirectory)
+    }
+
+    private fun scheduleReconnect() {
+        if (!networkAvailable || reconnectJob?.isActive == true) return
+        val attempt = generation
+        val wait = SessionRecovery.delayMillis(retry++)
+        reconnectJob = scope.launch {
+            delay(wait)
+            synchronized(loginHandshake) {
+                if (active && generation == attempt && loginHandshake.transport == null) connect()
+            }
+        }
     }
 
     private fun openTransport(useDirectory: Boolean) {
@@ -743,6 +807,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         openingTransport = null
         closingTransport = null
         busy.value = false
+        if (active && (token.isNotBlank() || loginHandshake.approved != null)) scheduleReconnect()
     }
     private val personaGameNames = java.util.concurrent.ConcurrentHashMap<Int, String>()
     private val personaGameIcons = java.util.concurrent.ConcurrentHashMap<Int, String>()
@@ -986,10 +1051,12 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     }
     suspend fun probeStoreSession(): String = storeWeb.probeStore()
     fun logout() {
+        val previousOwner = owner
         synchronized(loginHandshake) {
             endLogin("未登录", logOff = online.value)
             owner = ""
             token = ""
+            hasSession.value = false
             vault.clear()
         }
         voice.disconnect()
@@ -1015,7 +1082,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         notifications.clear()
         selfAvatar.value = ""
         people.value = emptyList()
-        scope.launch { dao.clearMessages() }
+        scope.launch { dao.clearMessages(); if (previousOwner.isNotBlank()) dao.deleteCache("owned-library:$previousOwner") }
     }
 
     fun close() {

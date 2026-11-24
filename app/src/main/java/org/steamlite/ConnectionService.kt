@@ -3,6 +3,9 @@ package org.steamlite
 import android.app.*
 import android.content.Intent
 import android.os.IBinder
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -14,6 +17,7 @@ class LiteApplication : Application() {
 /** Owns the ongoing messaging notification while the shared connection is active. */
 class ConnectionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     override fun onCreate() {
         super.onCreate()
         val manager = getSystemService(NotificationManager::class.java)
@@ -24,13 +28,29 @@ class ConnectionService : Service() {
             .setContentText(text).setContentIntent(open).setOngoing(true).build()
         startForeground(42, notification("保持 Steam 消息连接"))
         val steam = (application as LiteApplication).model.steam
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { steam.networkChanged(true) }
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) steam.networkChanged(true)
+            }
+            override fun onLost(network: Network) { steam.networkChanged(connectivity.activeNetwork != null) }
+        }
+        runCatching { connectivity.registerDefaultNetworkCallback(callback); networkCallback = callback }
         scope.launch { while (isActive) { delay(30_000); steam.resumeSession() } }
-        scope.launch { steam.status.combine(steam.busy) { status, busy -> status to busy }.collectLatest { (status, busy) ->
-            if (!steam.online.value && steam.owner.isBlank() && !busy) stopSelf()
-            else manager.notify(42, notification(if (steam.online.value) "Steam 已连接 · 后台接收消息" else status))
+        scope.launch { combine(steam.status, steam.online, steam.busy, steam.hasSession) { status, online, busy, saved ->
+            ConnectionNotice(status, online, busy, saved)
+        }.collectLatest { state ->
+            if (!state.online && !state.saved && !state.busy) stopSelf()
+            else manager.notify(42, notification(if (state.online) "Steam 已连接 · 后台接收消息" else state.status))
         } }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+    override fun onDestroy() {
+        networkCallback?.let { callback -> runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(callback) } }
+        scope.cancel(); super.onDestroy()
+    }
 }
+
+private data class ConnectionNotice(val status: String, val online: Boolean, val busy: Boolean, val saved: Boolean)
