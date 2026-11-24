@@ -217,7 +217,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                             LanguageRow(language.name, supportMark(language.ui), supportMark(language.subtitles), supportMark(language.audio))
                         }
                         if (languages.any { it.ui == null }) Text("· 表示 Steam 未提供分项数据", fontSize = 10.sp, color = Text3)
-                        if (languages.size > 3) TextLink(if (expandedLanguages) "收起语言" else "查看全部 ${languages.size} 种语言") { expandedLanguages = !expandedLanguages }
+                        if (languages.size > 3) DetailLink(if (expandedLanguages) "收起语言" else "查看全部 ${languages.size} 种语言") { expandedLanguages = !expandedLanguages }
                     }
                     val recommendations = data.optJSONObject("recommendations")?.optLong("total")?.takeIf { it > 0 }
                     val achievements = data.optJSONObject("achievements")?.optInt("total")?.takeIf { it > 0 }
@@ -244,7 +244,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                 if (!requirements?.optString("minimum").isNullOrBlank()) {
                     DetailSectionTitle("系统配置")
                     DetailPanel {
-                        TextLink(if (expandedRequirements) "收起配置" else "查看最低与推荐配置") { expandedRequirements = !expandedRequirements }
+                        DetailLink(if (expandedRequirements) "收起配置" else "查看最低与推荐配置") { expandedRequirements = !expandedRequirements }
                         if (expandedRequirements) {
                             Text(detailText(requirements!!.optString("minimum")), Modifier.padding(top = 12.dp), fontSize = 11.5.sp, lineHeight = 19.sp, color = Text2)
                             requirements.optString("recommended").takeIf { it.isNotBlank() }?.let { Text(detailText(it), Modifier.padding(top = 12.dp), fontSize = 11.5.sp, lineHeight = 19.sp, color = Text2) }
@@ -254,12 +254,12 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                 model.detailObservation?.let { observation ->
                     DetailSectionTitle("价格观察")
                     DetailPanel {
-                        TextLink(if (expandedHistory) "收起价格观察" else observation.label) { expandedHistory = !expandedHistory }
+                        DetailLink(if (expandedHistory) "收起价格观察" else observation.label) { expandedHistory = !expandedHistory }
                         if (expandedHistory) {
                             Text("本机观察最低 USD " + String.format(Locale.US, "%.2f", observation.lowest / 100.0), Modifier.padding(top = 10.dp), fontSize = 12.sp, color = MoneyText)
                             Text("${observation.count} 次观察 · ${time(observation.last)}\n仅本机记录，并非 Steam 全历史最低价", fontSize = 11.sp, lineHeight = 18.sp, color = Text3)
                         }
-                        TextLink("打开价格历史") { openInBrowser(context, "https://steamdb.info/app/$id/") }
+                        DetailLink("打开价格历史") { openInBrowser(context, "https://steamdb.info/app/$id/") }
                     }
                 }
             }
@@ -333,6 +333,9 @@ private fun DetailTag(label: String) {
 private fun DetailDivider() { Spacer(Modifier.height(17.dp)); Hairline(); Spacer(Modifier.height(17.dp)) }
 
 @Composable
+private fun DetailLink(text: String, onClick: () -> Unit) { Row { TextLink(text, onClick) } }
+
+@Composable
 private fun DetailFact(label: String, value: String) {
     if (value.isBlank()) return
     Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -380,6 +383,6 @@ private fun ReviewSummaryCard(reviews: List<GameReviewSummary>, loading: Boolean
             LinearProgressIndicator(progress = { selected.percent / 100f }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape), color = Accent, trackColor = Surface3)
             Text("共 ${NumberFormat.getIntegerInstance().format(selected.total)} 条评价 · ${selected.scope}", Modifier.padding(top = 10.dp, bottom = 8.dp), fontSize = 10.sp, color = Text3)
         }
-        TextLink("在 Steam 查看评价", openReviews)
+        DetailLink("在 Steam 查看评价", openReviews)
     }
 }

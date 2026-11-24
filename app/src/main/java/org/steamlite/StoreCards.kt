@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 internal fun wideArtworkUrls(id: Int, explicit: String = ""): List<String> = buildList {
-    if (explicit.isNotBlank() && !explicit.contains("capsule_sm") && !explicit.contains("capsule_231")) add(explicit)
+    if (explicit.isNotBlank() && explicit.contains("header")) add(explicit)
     add("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/$id/header.jpg")
     add("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/$id/header.jpg")
     if (explicit.isNotBlank()) add(explicit)

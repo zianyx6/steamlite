@@ -3,6 +3,10 @@ package org.steamlite
 import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesAuthSteamclient.*
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -48,5 +52,16 @@ class SteamQrAuthenticationTest {
             pollQrSession(begin(), { CAuthentication_PollAuthSessionStatus_Response.newBuilder().setRefreshToken("test-token").build() }, {}, {})
             fail("Incomplete credentials must fail")
         } catch (_: IllegalStateException) { }
+    }
+
+    @Test fun cancellingAfterQrDisplayStopsPolling() = runBlocking {
+        val visible = CompletableDeferred<Unit>()
+        var polls = 0
+        val job = launch {
+            pollQrSession(begin(), { polls++; error("Polling after cancellation") }, { visible.complete(Unit) }, { awaitCancellation() })
+        }
+        visible.await()
+        job.cancelAndJoin()
+        assertEquals(0, polls)
     }
 }
