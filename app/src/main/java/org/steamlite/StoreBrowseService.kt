@@ -11,8 +11,8 @@ class StoreBrowseService(unified: SteamUnifiedMessages) : UnifiedService(unified
     override fun handleResponseMsg(methodName: String, packetMsg: PacketClientMsgProtobuf) {
         if(methodName == "GetItems") postResponseMsg<BrowseResponse.Builder>(BrowseResponse::class.java, packetMsg)
     }
-    fun get(ids: List<Int>) = unifiedMessages!!.sendMessage<BrowseRequest.Builder, BrowseResponse.Builder>(BrowseResponse.Builder::class.java, "StoreBrowse.GetItems#1", BrowseRequest.newBuilder()
+    fun get(ids: List<Int>, country: String) = unifiedMessages!!.sendMessage<BrowseRequest.Builder, BrowseResponse.Builder>(BrowseResponse.Builder::class.java, "StoreBrowse.GetItems#1", BrowseRequest.newBuilder()
         .addAllIds(ids.map { ItemID.newBuilder().setAppid(it).build() })
-        .setContext(BrowseContext.newBuilder().setLanguage("schinese").setCountryCode("PK"))
+        .setContext(BrowseContext.newBuilder().setLanguage("schinese").setCountryCode(country))
         .setDataRequest(DataRequest.newBuilder().setIncludeRelease(true).setIncludeBestPurchaseOption(true)).build())
 }

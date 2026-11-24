@@ -256,7 +256,7 @@ fun GameDetailsDialog(model: LiteModel, open: (String) -> Unit) {
                     DetailPanel {
                         DetailLink(if (expandedHistory) "收起价格观察" else observation.label) { expandedHistory = !expandedHistory }
                         if (expandedHistory) {
-                            Text("本机观察最低 USD " + String.format(Locale.US, "%.2f", observation.lowest / 100.0), Modifier.padding(top = 10.dp), fontSize = 12.sp, color = MoneyText)
+                            Text("本机观察最低 " + (model.steam.storeRegion.value ?: StoreRegion.Guest).format(observation.lowest), Modifier.padding(top = 10.dp), fontSize = 12.sp, color = MoneyText)
                             Text("${observation.count} 次观察 · ${time(observation.last)}\n仅本机记录，并非 Steam 全历史最低价", fontSize = 11.sp, lineHeight = 18.sp, color = Text3)
                         }
                         DetailLink("打开价格历史") { openInBrowser(context, "https://steamdb.info/app/$id/") }

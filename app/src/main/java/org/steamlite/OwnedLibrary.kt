@@ -10,6 +10,7 @@ internal object OwnedLibrary {
             .sortedWith(compareByDescending<OwnedGame> { it.minutes }.thenBy { it.name.lowercase(java.util.Locale.ROOT) })
     }
     fun encode(owner: String, stats: LibraryStats): String = JSONObject().put("owner", owner).put("count", stats.count)
+        .put("country", stats.region?.country).put("currency", stats.region?.currency)
         .put("cents", stats.cents).put("priced", stats.priced).put("games", JSONArray().apply {
             stats.games.forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("minutes", it.minutes).put("recent", it.recent)) }
         }).toString()
@@ -22,6 +23,7 @@ internal object OwnedLibrary {
             val id = game.optInt("id").takeIf { it > 0 } ?: return@mapNotNull null
             OwnedGame(id, game.optString("name"), game.optLong("minutes").coerceAtLeast(0), game.optLong("recent").coerceAtLeast(0))
         }.distinctBy { it.id }
-        LibraryStats(json.optInt("count", games.size), games, json.optLong("cents").coerceAtLeast(0), json.optInt("priced").coerceAtLeast(0), pricing = false)
+        val region = StoreRegion.from(json.optString("country"), json.optString("currency"))
+        LibraryStats(json.optInt("count", games.size), games, if (region == null) 0 else json.optLong("cents").coerceAtLeast(0), if (region == null) 0 else json.optInt("priced").coerceAtLeast(0), pricing = false, region = region)
     }.getOrNull()
 }

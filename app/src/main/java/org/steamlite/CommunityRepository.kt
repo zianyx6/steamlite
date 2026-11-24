@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.future.await
 
 data class OwnedGame(val id: Int, val name: String, val minutes: Long, val recent: Long)
-data class LibraryStats(val count: Int, val games: List<OwnedGame>, val cents: Long = 0, val priced: Int = 0, val pricing: Boolean = true)
+data class LibraryStats(val count: Int, val games: List<OwnedGame>, val cents: Long = 0, val priced: Int = 0, val pricing: Boolean = true, val region: StoreRegion? = null)
 data class GroupChannel(val id: Long, val name: String)
 data class SteamGroup(val id: Long, val name: String, val members: Int, val avatar: String?, val channels: List<GroupChannel>, val avatarUrls: List<String> = emptyList(), val memberIds: List<Long> = emptyList())
 data class GroupMessage(val id: String, val sender: Long, val text: String, val time: Long)
@@ -29,9 +29,17 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
     private var groupJob: Job? = null
     private var emoteJob: Job? = null
     private var libraryOwner = ""
+    private var libraryRegion: StoreRegion? = null
     private var lastLibraryFetch = 0L
     init {
-        scope.launch { combine(steam.online, steam.sessionOwner, steam.hasSession) { online, owner, remembered -> Triple(online, owner, remembered) }.collectLatest { (online, owner, remembered) ->
+        scope.launch { combine(steam.online, steam.sessionOwner, steam.hasSession, steam.storeRegion) { online, owner, remembered, region -> Triple(online, owner, remembered) to region }.collectLatest { (session, region) ->
+            val (online, owner, remembered) = session
+            if (region != libraryRegion) {
+                libraryJob?.cancel()
+                libraryRegion = region
+                lastLibraryFetch = 0L
+                library.value = library.value?.let { if (it.region == region && region != null) it else it.copy(cents = 0, priced = 0, region = region, pricing = false) }
+            }
             if (owner != libraryOwner) {
                 libraryJob?.cancel()
                 val previous = libraryOwner
@@ -42,7 +50,9 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
                 if (owner.isNotBlank() && remembered) {
                     val cached = withContext(Dispatchers.IO) { dao.cached("owned-library:$owner") }
                     if (owner == steam.owner && library.value == null) cached?.let {
-                        library.value = OwnedLibrary.decode(owner, it.body)
+                        library.value = OwnedLibrary.decode(owner, it.body)?.let { cachedStats ->
+                            if (cachedStats.region == region && region != null) cachedStats else cachedStats.copy(cents = 0, priced = 0, region = region)
+                        }
                         if (library.value != null) libraryStatus.value = "已保存的游戏库 · ${time(it.time)}"
                     }
                 }
@@ -82,20 +92,21 @@ class CommunityRepository(private val steam: SteamConnection, private val scope:
         if(!steam.online.value || libraryJob?.isActive == true) return
         val owner = steam.owner; libraryStatus.value = "正在同步游戏库"
         libraryJob = scope.launch { try {
+            val region = steam.requireStoreRegion()
             val response = withTimeout(25000) { steam.playerService.getOwnedGames(CPlayer_GetOwnedGames_Request.newBuilder().setSteamid(owner.toLong()).setIncludeAppinfo(true).setIncludePlayedFreeGames(true).build()).await() }
             check(response.result == EResult.OK) { response.result.toString() }
             check(owner == steam.owner && steam.online.value)
             val games = response.body.gamesList.map { OwnedGame(it.appid, it.name, it.playtimeForever.toLong().coerceAtLeast(0), it.playtime2Weeks.toLong().coerceAtLeast(0)) }
             lastLibraryFetch = System.currentTimeMillis()
-            library.value = LibraryStats(response.body.gameCount, games)
+            library.value = LibraryStats(response.body.gameCount, games, region = region)
             libraryOwner = owner
             saveLibrary(owner)
             var sum = 0L; var priced = 0
             for(chunk in games.map { it.id }.chunked(80)) {
                 val quotes = steam.wishlistGames(chunk)
-                check(owner == steam.owner && steam.online.value)
-                quotes.filter { it.loaded && it.cents != null && (it.price.startsWith("$") || it.cents == 0L) }.forEach { sum += it.cents!!; priced++ }
-                library.value = LibraryStats(response.body.gameCount, games, sum, priced)
+                check(owner == steam.owner && steam.online.value && steam.storeRegion.value == region)
+                quotes.filter { it.loaded && it.cents != null && it.region == region.key }.forEach { sum += it.cents!!; priced++ }
+                library.value = LibraryStats(response.body.gameCount, games, sum, priced, region = region)
                 libraryStatus.value = "游戏库已同步 · 正在估算现价 $priced / ${games.size}"
             }
             library.value = library.value?.copy(pricing = false)

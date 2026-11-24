@@ -32,6 +32,7 @@ fun MeScreen(model: LiteModel, onOpenStatus: () -> Unit) {
     val avatar by model.steam.selfAvatar.collectAsState()
     val stats by model.community.library.collectAsState()
     val libraryStatus by model.community.libraryStatus.collectAsState()
+    val region by model.steam.storeRegion.collectAsState()
     var query by rememberSaveable(owner) { mutableStateOf("") }
     var settings by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
@@ -64,8 +65,8 @@ fun MeScreen(model: LiteModel, onOpenStatus: () -> Unit) {
                     countSub = stats?.let { "已获取 ${it.priced} 款报价" } ?: if (online) "正在同步" else "等待恢复连接",
                     hours = stats?.let { String.format(Locale.US, "%,.0f", it.games.sumOf { game -> game.minutes } / 60.0) } ?: "—",
                     hoursSub = stats?.let { String.format(Locale.US, "%.1f 小时 / 2 周", it.games.sumOf { game -> game.recent } / 60.0) },
-                    value = stats?.takeIf { it.priced > 0 }?.let { String.format(Locale.US, "\$%,.2f", it.cents / 100.0) } ?: "—",
-                    valueSub = "PK 商店现价合计",
+                    value = stats?.takeIf { it.priced > 0 && it.region == region }?.let { region?.format(it.cents) } ?: "—",
+                    valueSub = region?.let { "${it.country} 商店现价合计 · ${it.currency}" } ?: "等待账号商店地区",
                     recent = stats?.let { String.format(Locale.US, "%.1f", it.games.sumOf { game -> game.recent } / 60.0) } ?: "—",
                     recentSub = "近两周游玩")
             }

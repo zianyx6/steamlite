@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesPlayerSteamclient.*
 import `in`.dragonbra.javasteam.types.AsyncJobSingle
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -74,6 +75,41 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     private val wishlistService = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<WishlistService>()
     private val storeBrowse = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<StoreBrowseService>()
     private val priceRequests = PriceRequestGate()
+    private val accountService = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<`in`.dragonbra.javasteam.rpc.service.UserAccount>()
+    private val regionLock = kotlinx.coroutines.sync.Mutex()
+    val storeRegion = MutableStateFlow<StoreRegion?>(null)
+    val storeRegionStatus = MutableStateFlow("登录后读取账号商店地区")
+    suspend fun requireStoreRegion(refresh: Boolean = false): StoreRegion = regionLock.withLock {
+        if (!refresh) storeRegion.value?.let { return@withLock it }
+        check(online.value && owner.isNotBlank()) { "账号商店地区尚未就绪，请连接 Steam 后重试" }
+        val accountOwner = owner
+        storeRegionStatus.value = "正在读取账号商店地区"
+        try {
+            val response = withTimeout(20000) {
+                accountService.getClientWalletDetails(`in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesUseraccountSteamclient.CUserAccount_GetClientWalletDetails_Request.getDefaultInstance()).await()
+            }
+            check(response.result == EResult.OK) { "商店地区读取失败：${response.result}" }
+            val body = response.body
+            val country = body.walletCountryCode.ifBlank { body.userCountryCode }.ifBlank {
+                val result = withTimeout(15000) { accountService.getUserCountry(`in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesUseraccountSteamclient.CUserAccount_GetUserCountry_Request.getDefaultInstance()).await() }
+                check(result.result == EResult.OK) { "账号地区读取未完成" }
+                result.body.country
+            }.uppercase(java.util.Locale.ROOT)
+            val walletCurrency = ECurrencyCode.from(body.currencyCode)?.name.orEmpty()
+            val currency = if (StoreRegion.from(country, walletCurrency) != null) walletCurrency else StoreCurrencyResolver.resolve(country)
+            val region = StoreRegion.from(country, currency) ?: error("Steam 尚未返回有效的商店地区和币种，请稍后重试")
+            check(online.value && owner == accountOwner) { "账号会话已变化" }
+            dao.cache(CachedResponse("account-store-region:$accountOwner", JSONObject().put("country", region.country).put("currency", region.currency).toString(), System.currentTimeMillis()))
+            check(online.value && owner == accountOwner) { "账号会话已变化" }
+            storeRegion.value = region
+            storeRegionStatus.value = region.label
+            region
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (owner == accountOwner) storeRegionStatus.value = "账号商店地区读取未完成，可重试"
+            throw e
+        }
+    }
     val playerService = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<`in`.dragonbra.javasteam.rpc.service.Player>()
     val chatService = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<`in`.dragonbra.javasteam.rpc.service.ChatRoom>()
     private val personaChat = client.getHandler(SteamUnifiedMessages::class.java)!!.createService<`in`.dragonbra.javasteam.rpc.service.Chat>()
@@ -218,7 +254,10 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     val historyStatus = MutableStateFlow("")
     var owner: String
         get() = sessionOwner.value
-        private set(value) { sessionOwner.value = value }
+        private set(value) {
+            if (value != sessionOwner.value) storeRegion.value = null
+            sessionOwner.value = value
+        }
     val steamId: String get() = owner
     private var account = ""
     private var token = ""
@@ -403,6 +442,7 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 loginHandshake.complete { finishLogon(callback.result, steamId, it) } == true
             }
             if (signedIn) {
+                scope.launch { runCatching { requireStoreRegion(refresh = true) } }
                 scope.launch { runCatching { refreshFriendRemarks() } }
                 refreshRecentSessions()
                 scope.launch { loadSelfAvatar() }
@@ -509,6 +549,12 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 token = json.getString("token")
                 hasSession.value = token.isNotBlank()
                 owner = json.optString("steamId").takeIf { it.matches(Regex("[0-9]{17}")) } ?: SessionRecovery.cachedOwner(token)
+                val cachedOwner = owner
+                scope.launch {
+                    val cached = dao.cached("account-store-region:$cachedOwner")
+                    val region = cached?.let { runCatching { JSONObject(it.body).let { j -> StoreRegion.from(j.getString("country"), j.getString("currency")) } }.getOrNull() }
+                    if (owner == cachedOwner && storeRegion.value == null) storeRegion.value = region
+                }
                 connect()
             } }
         }
@@ -1007,19 +1053,21 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
     suspend fun wishlistGames(ids: List<Int>): List<WishGame> {
         check(online.value) { "Steam 已断开" }
         val accountOwner = owner
+        val region = requireStoreRegion()
         val response = priceRequests.request {
             check(online.value && owner == accountOwner) { "账号会话已变化" }
-            withTimeout(20000) { storeBrowse.get(ids).await() }.also {
+            check(storeRegion.value == region) { "商店地区已变化，请重新同步" }
+            withTimeout(20000) { storeBrowse.get(ids, region.country).await() }.also {
                 if (it.result == EResult.RateLimitExceeded) throw PriceRateLimited()
                 check(it.result == EResult.OK) { "批量价格读取失败：${it.result}" }
             }
         }
-        check(online.value && owner == accountOwner) { "账号会话已变化" }
+        check(online.value && owner == accountOwner && storeRegion.value == region) { "账号或商店地区已变化" }
         return response.body.storeItemsList.map { item ->
             val purchase = item.bestPurchaseOption
             WishGame(if(item.appid > 0) item.appid else item.id, item.name, if(item.hasBestPurchaseOption()) purchase.finalPriceInCents else if(item.isFree) 0L else null,
                 if(item.isFree) "免费" else purchase.formattedFinalPrice, purchase.discountPct,
-                item.release.steamReleaseDate.toLong(), item.isComingSoon || item.release.isComingSoon, item.success == 1)
+                item.release.steamReleaseDate.toLong(), item.isComingSoon || item.release.isComingSoon, item.success == 1, region.key)
         }
     }
     /**

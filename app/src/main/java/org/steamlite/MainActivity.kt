@@ -29,6 +29,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,7 +44,7 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
     val notifications = ChatNotifications(app)
     val steam = SteamConnection(SessionVault(app), db.dao(), notifications)
     var openChatRequests by mutableIntStateOf(0)
-    val store = StoreRepository(db.dao())
+    val store = StoreRepository(db.dao(), steam)
     val wishlist = WishlistRepository(steam, db.dao())
     val community = CommunityRepository(steam, viewModelScope, db.dao())
     val activity = FriendActivityRepository(steam, viewModelScope)
@@ -67,6 +69,7 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
                 if (!steam.online.value || steam.owner != owner) throw kotlinx.coroutines.CancellationException("account changed")
             }
             try {
+                step("商店地区") { steam.requireStoreRegion(refresh = true) }
                 step("好友资料") { steam.syncContacts() }
                 step("会话") { steam.syncConversations() }
                 step("群组") { community.syncGroups() }
@@ -145,7 +148,7 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
         detailObservation = null
         detailSupplement = null
         detailLoading = true
-        try { val data = store.details(id); val observed = store.observations.summary(id); detailObservation = observed; detail = data }
+        try { val data = store.details(id); val observed = store.observations.summary(id, store.currentRegion()); detailObservation = observed; detail = data }
         catch(e: kotlinx.coroutines.CancellationException) { throw e }
         catch(e: Exception) { error = "详情失败：${e.message}" }
         finally { detailLoading = false }
@@ -159,6 +162,20 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
             finally { detailSupplementLoading = false }
         }
     } }
+    init {
+        viewModelScope.launch {
+            combine(steam.sessionOwner, steam.hasSession, steam.storeRegion) { owner, remembered, region -> Triple(owner, remembered, region) }
+                .collectLatest { (_, remembered, region) ->
+                    searchJob?.cancel(); detailJob?.cancel()
+                    games = emptyList(); recommendations = emptyList()
+                    detail = null; detailObservation = null; detailSupplement = null
+                    wishlist.clearVisible()
+                    loading = false; detailLoading = false; detailSupplementLoading = false
+                    info = if (remembered && region == null) "正在读取账号商店地区" else "尚未加载"
+                    if (!remembered || region != null) search(searchQuery)
+                }
+        }
+    }
     override fun onCleared() { steam.close(); db.close() }
 }
 
@@ -287,6 +304,7 @@ private fun ConnectionSheet(model: LiteModel, onClose: () -> Unit) {
     val status by model.steam.status.collectAsState()
     val online by model.steam.online.collectAsState()
     val busy by model.steam.busy.collectAsState()
+    val region by model.steam.storeRegion.collectAsState()
     val owner = model.steam.owner
 
     ModalBottomSheet(
@@ -312,7 +330,7 @@ private fun ConnectionSheet(model: LiteModel, onClose: () -> Unit) {
             Column(Modifier.fillMaxWidth()) {
                 ConnectionRow("连接", if (online) "已连接" else if (busy) "连接中" else "未连接", online)
                 ConnectionRow("账号", owner.ifBlank { "未登录" }, false)
-                ConnectionRow("商店地区", "PK · 待核实", false)
+                ConnectionRow("商店地区", region?.label ?: if (owner.isBlank()) "登录后读取" else "尚未获取", false)
                 ConnectionRow("凭证存储", "Android Keystore（本机）", false)
             }
 

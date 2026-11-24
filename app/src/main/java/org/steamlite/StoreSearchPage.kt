@@ -10,7 +10,7 @@ object StoreSearchParser {
         val name = row.selectFirst(".title")?.text()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val price = row.selectFirst(".discount_final_price")?.text().orEmpty().ifBlank { "价格不可用" }
         val final = row.selectFirst("[data-price-final]")?.attr("data-price-final")?.toLongOrNull()?.takeIf { it >= 0 }
-        val cents = if(price == "免费" || price.equals("Free", true)) 0L else if(Regex("^(US\\$|USD|\\$)\\s*\\d").containsMatchIn(price)) final else null
+        val cents = if(price == "免费" || price.equals("Free", true)) 0L else final
         val percent = row.selectFirst(".search_review_summary")?.attr("data-tooltip-html")?.let { Regex("(\\d{1,3})%").find(it)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 0..100 } }
         Game(id, name, row.selectFirst("img")?.attr("src").orEmpty(), price,
             row.selectFirst(".discount_pct")?.text()?.filter(Char::isDigit)?.toIntOrNull()?.coerceIn(0,100) ?: 0,

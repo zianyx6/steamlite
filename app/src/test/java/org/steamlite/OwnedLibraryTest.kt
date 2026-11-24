@@ -13,14 +13,23 @@ class OwnedLibraryTest {
         assertTrue(OwnedLibrary.search(games, "not owned").isEmpty())
     }
     @Test fun cacheSurvivesReconnectButNeverCrossesAccountBoundaries() {
-        val stats = LibraryStats(3, games, 10000, 2, pricing = true)
+        val stats = LibraryStats(3, games, 10000, 2, pricing = true, region = StoreRegion("CN", "CNY"))
         val encoded = OwnedLibrary.encode("account-a", stats)
         val restored = OwnedLibrary.decode("account-a", encoded)!!
         assertEquals(games, restored.games)
         assertEquals(10000L, restored.cents)
+        assertEquals(StoreRegion("CN", "CNY"), restored.region)
         assertFalse(restored.pricing)
         assertNull(OwnedLibrary.decode("account-b", encoded))
         assertNull(OwnedLibrary.decode("", encoded))
         assertNull(OwnedLibrary.decode("account-a", "broken"))
+    }
+    @Test fun legacyEstimatesWithoutRegionAreDiscardedButGamesSurvive() {
+        val encoded = OwnedLibrary.encode("account-a", LibraryStats(3, games, 10000, 2))
+        val restored = OwnedLibrary.decode("account-a", encoded)!!
+        assertEquals(games, restored.games)
+        assertEquals(0L, restored.cents)
+        assertEquals(0, restored.priced)
+        assertNull(restored.region)
     }
 }

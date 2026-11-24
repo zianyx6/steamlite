@@ -41,6 +41,8 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
 
     val online by model.steam.online.collectAsState()
     val hasSession by model.steam.hasSession.collectAsState()
+    val region by model.steam.storeRegion.collectAsState()
+    LaunchedEffect(region) { min = ""; max = "" }
     val library by model.community.library.collectAsState()
     val libraryStatus by model.community.libraryStatus.collectAsState()
     val ownedIds = remember(library?.games) { library?.games?.map { it.id }?.toSet().orEmpty() }
@@ -58,7 +60,7 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
     LaunchedEffect(active) {
         if (active && model.games.isEmpty() && !model.loading && model.error.isBlank()) model.search(model.searchQuery)
     }
-    LaunchedEffect(active, online) { if (active && online) { model.wishlist.refresh(); if (library == null) model.community.refreshLibrary() } }
+    LaunchedEffect(active, online, region) { if (active && online) { model.wishlist.refresh(); if (library == null) model.community.refreshLibrary() } }
 
     val minCents = min.toDoubleOrNull()?.times(100)
     val maxCents = max.toDoubleOrNull()?.times(100)
@@ -234,6 +236,8 @@ private fun StoreFilterSheet(
     onMax: (String) -> Unit,
     onClose: () -> Unit
 ) {
+    val region by model.steam.storeRegion.collectAsState()
+    val hasSession by model.steam.hasSession.collectAsState()
     ModalBottomSheet(
         onDismissRequest = onClose,
         containerColor = Surface1,
@@ -271,7 +275,7 @@ private fun StoreFilterSheet(
             }
 
             Spacer(Modifier.height(18.dp))
-            Text("价格区间（USD）", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Text3)
+            Text("价格区间（${region?.currency ?: if (hasSession) "等待地区" else "USD"}）", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Text3)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LabeledField(min, onMin, "最低", Modifier.weight(1f))

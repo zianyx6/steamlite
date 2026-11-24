@@ -19,8 +19,8 @@ class StoreSearchParserTest {
         val html = """<a class="search_result_row" data-ds-appid="1,2"><span class="title">Bundle</span></a><a class="search_result_row" data-ds-appid="400"><span class="title">Portal</span></a>"""
         assertEquals(1,StoreSearchParser.games(html+html).size)
     }
-    @Test fun doesNotTreatNonUsdMoneyOrMissingReviewsAsUsdOrPositive() {
+    @Test fun keepsRegionalPriceUnitsWithoutAssumingDollarsOrPositiveReviews() {
         val html = """<a class="search_result_row" data-ds-appid="400"><span class="title">Portal</span><div data-price-final="100"><span class="discount_final_price">¥1.00</span></div></a>"""
-        val game = StoreSearchParser.games(html).single(); assertNull(game.cents); assertNull(game.positivePercent)
+        val game = StoreSearchParser.games(html).single(); assertEquals(100L, game.cents); assertEquals("¥1.00", game.price); assertNull(game.positivePercent)
     }
 }
