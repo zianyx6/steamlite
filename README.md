@@ -10,7 +10,7 @@
 
 <br>
 
-<a href="https://github.com/zianyx6/steamlite/releases/download/v1.0.4/SteamLite-1.0.4.apk"><img src="docs/download-apk.svg" width="360" alt="下载 Steam Lite 1.0.4 Android 安装包"></a>
+<a href="https://github.com/zianyx6/steamlite/releases/download/v1.0.5/SteamLite-1.0.5.apk"><img src="docs/download-apk.svg" width="360" alt="下载 Steam Lite 1.0.5 Android 安装包"></a>
 
 Android 8.0 及以上 · 可覆盖升级 · 无需自行编译
 
@@ -36,7 +36,7 @@ Android 8.0 及以上 · 可覆盖升级 · 无需自行编译
 <details>
 <summary>查看原图与隐私处理说明</summary>
 
-点击截图可查看原图。展示图基于当前版本在 Android 12 MuMu 中的真实界面截图；个人主页与会话页经 AI 隐私编辑，头像、昵称、账号及个人统计替换为演示信息，排版细节可能略有差异。商店与详情页保留实拍画面，报价仅代表拍摄时的数据。
+点击截图可查看原图。展示图基于 1.0.4 在 Android 12 MuMu 中的真实界面截图（1.0.5 的价格与估价会跟随账号地区）；个人主页与会话页经 AI 隐私编辑，头像、昵称、账号及个人统计替换为演示信息，排版细节可能略有差异。商店与详情页保留实拍画面，报价仅代表拍摄时的数据。
 
 主题支持深浅色切换与跟随系统。悬浮底栏避开系统手势区，键盘弹出时自动收起；Android 13 及以上支持实时玻璃折射，Android 8 至 12 使用普通悬浮底栏。
 
@@ -52,7 +52,7 @@ Android 8.0 及以上 · 可覆盖升级 · 无需自行编译
 
 ## 三步开始
 
-1. **下载安装**：下载 [SteamLite-1.0.4.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.4/SteamLite-1.0.4.apk)，在 Android 上打开，按系统提示允许安装。相同签名的旧版本可直接覆盖升级。
+1. **下载安装**：下载 [SteamLite-1.0.5.apk](https://github.com/zianyx6/steamlite/releases/download/v1.0.5/SteamLite-1.0.5.apk)，在 Android 上打开，按系统提示允许安装。相同签名的旧版本可直接覆盖升级。
 2. **登录 Steam**：进入“我的”，使用另一台设备上的 Steam Guard 扫码，或输入账号密码。可等待手机确认，也可提交令牌码，按 Steam 提供的方式完成验证。
 3. **开始使用**：底栏依次为商店、愿望单、动态、消息、我的。消息默认进入“会话”；统一同步与其他设置位于“我的”左上角。
 
@@ -64,6 +64,7 @@ Android 8.0 及以上 · 可覆盖升级 · 无需自行编译
 <summary>连接、后台运行与当前功能边界</summary>
 
 - 1.0.4 在 Android 12 MuMu 验证了覆盖安装、重启后恢复会话、游戏库缓存与搜索、独立设置页，以及真实购买套餐和评价摘要。长时间锁屏、厂商省电策略和更多真机环境仍待扩大验证。
+- 1.0.5 已验证 PK / USD 登录账号的商店、详情与估价一致；CNY、JPY 已完成公开报价对照与格式测试，其他地区账号的完整登录实测仍待扩大。
 - 需要能够访问 Steam 社区、聊天与图片 CDN。后台连接和通知受网络、系统通知授权与省电策略影响。
 - 语音通话限好友私聊与前台使用；群语音、视频通话和完整群管理尚未提供。
 - 价格限流时停止继续查询并保留已加载数据，完整同步可能有部分项目未完成。
