@@ -12,7 +12,7 @@ kotlin {
 android {
     namespace = "org.steamlite"
     compileSdk = 37
-    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 103; versionName = "1.0.3"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
+    defaultConfig { applicationId = "org.steamlite"; minSdk = 26; targetSdk = 34; versionCode = 104; versionName = "1.0.4"; testInstrumentationRunner = "org.steamlite.ImageNetworkCheck" }
     val releaseKey = System.getenv("STEAMLITE_KEYSTORE")
     if (!releaseKey.isNullOrBlank()) signingConfigs.create("distribution") {
         storeFile = file(releaseKey)
@@ -26,6 +26,13 @@ android {
         isShrinkResources = true
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         if (!releaseKey.isNullOrBlank()) signingConfig = signingConfigs.getByName("distribution")
+    }
+    // Isolated demo app for public screenshots; never included in release/debug APKs.
+    buildTypes.create("screenshots") {
+        initWith(buildTypes.getByName("debug"))
+        applicationIdSuffix = ".screenshots"
+        versionNameSuffix = "-screenshots"
+        matchingFallbacks += "debug"
     }
     buildFeatures { compose = true }
     testOptions { unitTests.isIncludeAndroidResources = true }

@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="Steam Lite 展示" tools:replace="android:label">
+        <activity android:name="org.steamlite.DemoScreenshotsActivity" android:exported="true" />
+    </application>
+</manifest>

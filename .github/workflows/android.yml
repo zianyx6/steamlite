@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      screenshots:
+        description: Build the isolated public screenshot demo app
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -52,3 +57,14 @@ jobs:
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Build isolated screenshot demo
+        if: github.event_name == 'workflow_dispatch' && inputs.screenshots
+        run: ./gradlew assembleScreenshots --no-daemon
+      - name: Upload screenshot demo APK
+        if: github.event_name == 'workflow_dispatch' && inputs.screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteamLite-screenshot-demo-${{ github.run_number }}
+          path: app/build/outputs/apk/screenshots/app-screenshots.apk
+          if-no-files-found: error
+          retention-days: 7
