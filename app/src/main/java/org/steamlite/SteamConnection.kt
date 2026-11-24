@@ -100,9 +100,11 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
             val region = StoreRegion.from(country, currency) ?: error("Steam 尚未返回有效的商店地区和币种，请稍后重试")
             check(online.value && owner == accountOwner) { "账号会话已变化" }
             dao.cache(CachedResponse("account-store-region:$accountOwner", JSONObject().put("country", region.country).put("currency", region.currency).toString(), System.currentTimeMillis()))
-            check(online.value && owner == accountOwner) { "账号会话已变化" }
-            storeRegion.value = region
-            storeRegionStatus.value = region.label
+            synchronized(loginHandshake) {
+                check(online.value && owner == accountOwner) { "账号会话已变化" }
+                storeRegion.value = region
+                storeRegionStatus.value = region.label
+            }
             region
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
@@ -553,7 +555,9 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
                 scope.launch {
                     val cached = dao.cached("account-store-region:$cachedOwner")
                     val region = cached?.let { runCatching { JSONObject(it.body).let { j -> StoreRegion.from(j.getString("country"), j.getString("currency")) } }.getOrNull() }
-                    if (owner == cachedOwner && storeRegion.value == null) storeRegion.value = region
+                    synchronized(loginHandshake) {
+                        if (owner == cachedOwner && storeRegion.value == null) storeRegion.value = region
+                    }
                 }
                 connect()
             } }

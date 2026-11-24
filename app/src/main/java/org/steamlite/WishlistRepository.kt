@@ -70,6 +70,7 @@ class WishlistRepository(private val steam: SteamConnection, private val dao: Ca
             snapshot.value = cached?.let { val items = JSONArray(it.body); WishlistSnapshot((0 until items.length()).map(items::getInt), it.time, true) }
             snapshotOwner = owner; snapshotRegion = region.key; retryAt = 0; lastAttempt = 0
             dao.cached("wishgames:$owner:${region.key}")?.let { cachedGames ->
+                check(steam.owner == owner && steam.storeRegion.value == region) { "账号或商店地区已变化" }
                 pricesUpdatedAt.value = cachedGames.time
                 val array = JSONArray(cachedGames.body)
                 games.value = (0 until array.length()).map { index -> val j = array.getJSONObject(index); priceTimes[j.getInt("id")] = j.optLong("updated", cachedGames.time); WishGame(j.getInt("id"), j.getString("name"), if(j.isNull("cents")) null else j.getLong("cents"), j.getString("price"), j.getInt("discount"), j.getLong("release"), j.getBoolean("coming"), j.getBoolean("loaded"), region.key) }.associateBy { it.id }
