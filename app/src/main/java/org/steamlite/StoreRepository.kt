@@ -19,15 +19,15 @@ class StoreRepository(private val dao: CacheDao) {
     val observations = PriceObservations(dao)
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).callTimeout(35, TimeUnit.SECONDS).build()
     private val locks = ConcurrentHashMap<String, Mutex>()
-    private suspend fun fetch(url: String, refresh: Boolean): Triple<String, Boolean, Long> = locks.getOrPut(url) { Mutex() }.withLock { fetchInternal(url, refresh) }
-    private suspend fun fetchInternal(url: String, refresh: Boolean): Triple<String, Boolean, Long> = withContext(Dispatchers.IO) {
+    private suspend fun fetch(url: String, refresh: Boolean, json: Boolean = true): Triple<String, Boolean, Long> = locks.getOrPut(url) { Mutex() }.withLock { fetchInternal(url, refresh, json) }
+    private suspend fun fetchInternal(url: String, refresh: Boolean, json: Boolean): Triple<String, Boolean, Long> = withContext(Dispatchers.IO) {
         val cached = dao.cached(url)
         if (!refresh && cached != null && System.currentTimeMillis() - cached.time < 300000) return@withContext Triple(cached.body, true, cached.time)
         try {
             http.newCall(Request.Builder().url(url).build()).execute().use {
                 check(it.isSuccessful) { "HTTP ${it.code}" }
                 val body = it.body?.string() ?: error("空响应")
-                JSONObject(body)
+                if (json) JSONObject(body) else check(org.jsoup.Jsoup.parse(body).selectFirst(".apphub_AppName") != null) { "Steam 附加详情暂不可用" }
                 val now = System.currentTimeMillis(); dao.cache(CachedResponse(url, body, now)); Triple(body, false, now)
             }
         } catch (e: CancellationException) { throw e }
@@ -101,6 +101,11 @@ class StoreRepository(private val dao: CacheDao) {
         val data = root.getJSONObject("data"); val price = data.optJSONObject("price_overview")
         if(!cached && price?.optString("currency") == "USD" && price.has("final")) observations.record(id, price.getLong("final"), time, "Steam appdetails · PK · USD")
         data
+    }
+    internal suspend fun detailSupplement(id: Int): DetailSupplement = withContext(Dispatchers.Default) {
+        require(id > 0)
+        val (html) = fetch("https://store.steampowered.com/app/$id/?cc=pk&l=schinese", false, json = false)
+        GameDetailsData.supplement(html)
     }
     suspend fun wishlist(steamId: String): List<Int> {
         require(steamId.matches(Regex("[0-9]{17}"))) { "请输入 SteamID64" }

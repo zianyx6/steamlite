@@ -39,6 +39,7 @@ data class FriendRow(val id: Long, val name: String, val state: String, val avat
 data class RecentSession(val peer: Long, val time: Long, val unread: Int)
 class SteamConnection(private val vault: SessionVault, private val dao: CacheDao, private val notifications: ChatNotifications) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val qrAuthentication = SteamQrAuthentication()
     private val client = SteamClient(SteamConfiguration.create { builder ->
         builder.withProtocolTypes(ProtocolTypes.WEB_SOCKET).withConnectionTimeout(15000)
             .withDefaultPersonaStateFlags(java.util.EnumSet.of(EClientPersonaStateFlag.Status, EClientPersonaStateFlag.Presence, EClientPersonaStateFlag.PlayerName, EClientPersonaStateFlag.GameExtraInfo, EClientPersonaStateFlag.GameDataBlob, EClientPersonaStateFlag.RichPresence, EClientPersonaStateFlag.LastSeen))
@@ -443,6 +444,8 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
         manager.subscribe(DisconnectedCallback::class.java) { synchronized(loginHandshake) {
             // A queued event from the retired socket must not tear down an online replacement.
             if (client.isConnected) return@subscribe
+            // HTTPS QR acquisition has no chat transport yet; a retired socket cannot cancel it.
+            if (active && qrLogin.value && loginHandshake.transport == null) return@subscribe
             authenticationJob?.cancel()
             loginHandshake.disconnected()
             openingTransport = null
@@ -534,7 +537,53 @@ class SteamConnection(private val vault: SessionVault, private val dao: CacheDao
 
     fun loginWithQr() = synchronized(loginHandshake) {
         if (!canStartLogin()) return@synchronized
-        startInteractiveLogin("", "", scanning = true)
+        probe = false
+        interactiveLogin = true
+        loginSucceeded.value = false
+        guard.value = ""
+        generation++
+        val attempt = generation
+        account = ""; password = ""; token = ""
+        qrLogin.value = true
+        qrChallenge.value = null
+        active = true
+        busy.value = true
+        status.value = "正在获取 Steam 登录二维码"
+        authenticationJob = scope.launch {
+            val started = android.os.SystemClock.elapsedRealtime()
+            try {
+                val approved = withTimeout(180000) {
+                    qrAuthentication.authenticate { challenge -> synchronized(loginHandshake) {
+                        ensureActive()
+                        if (!active || generation != attempt) throw CancellationException()
+                        if (qrChallenge.value == null) android.util.Log.i("SteamLiteQr", "HTTPS challenge ready in ${android.os.SystemClock.elapsedRealtime() - started}ms")
+                        qrChallenge.value = challenge
+                        status.value = "等待 Steam 手机应用扫码确认"
+                    } }
+                }
+                synchronized(loginHandshake) {
+                    ensureActive()
+                    if (!active || generation != attempt) return@launch
+                    loginHandshake.approve(approved)
+                    qrChallenge.value = null
+                    connect()
+                    status.value = "扫码已确认，正在连接 Steam"
+                }
+            } catch (error: CancellationException) {
+                if (error is TimeoutCancellationException) synchronized(loginHandshake) {
+                    if (active && generation == attempt) endLogin("二维码已超时，请重新获取")
+                } else throw error
+            } catch (error: Exception) {
+                synchronized(loginHandshake) {
+                    if (!active || generation != attempt) return@launch
+                    if (qrChallenge.value == null && error is java.io.IOException) {
+                        // Preserve the already-tested CM authentication route if HTTPS cannot be reached.
+                        connect()
+                        status.value = "正在通过备用通道获取二维码"
+                    } else endLogin("二维码登录失败，请重试（${error.javaClass.simpleName}）")
+                }
+            }
+        }
     }
 
     private fun canStartLogin() = !active && !online.value && loginHandshake.transport == null

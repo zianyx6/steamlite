@@ -89,6 +89,12 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
     var info by mutableStateOf("尚未加载")
     var detail by mutableStateOf<JSONObject?>(null)
     var detailObservation by mutableStateOf<PriceObservation?>(null)
+    internal var detailSupplement by mutableStateOf<DetailSupplement?>(null)
+        private set
+    var detailSupplementLoading by mutableStateOf(false)
+        private set
+    var detailLoading by mutableStateOf(false)
+        private set
     var webCheck by mutableStateOf("")
     fun changeWishlist(appId: Int, add: Boolean) {
         if(wishlist.mutating.value) return
@@ -137,9 +143,21 @@ class LiteModel(app: Application) : AndroidViewModel(app) {
     private var detailJob: kotlinx.coroutines.Job? = null
     fun details(id: Int) { detailJob?.cancel(); detailJob = viewModelScope.launch {
         detailObservation = null
+        detailSupplement = null
+        detailLoading = true
         try { val data = store.details(id); val observed = store.observations.summary(id); detailObservation = observed; detail = data }
         catch(e: kotlinx.coroutines.CancellationException) { throw e }
         catch(e: Exception) { error = "详情失败：${e.message}" }
+        finally { detailLoading = false }
+        if (detail?.optInt("steam_appid") == id) {
+            detailSupplementLoading = true
+            try {
+                val supplement = store.detailSupplement(id)
+                if (detail?.optInt("steam_appid") == id) detailSupplement = supplement
+            } catch(e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* Base details remain usable without the optional HTML summary. */ }
+            finally { detailSupplementLoading = false }
+        }
     } }
     override fun onCleared() { steam.close(); db.close() }
 }

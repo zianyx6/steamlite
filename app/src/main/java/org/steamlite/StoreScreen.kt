@@ -7,6 +7,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -141,7 +143,7 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
 
             item { MetaLine(model.info, Glyph.Info) }
 
-            if (model.loading) {
+            if (model.loading || model.detailLoading) {
                 item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 10.dp), color = Accent, trackColor = Surface3) }
             }
             if (model.error.isNotEmpty()) {
@@ -156,6 +158,49 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                 item { StatusBanner(notice, Tone.Info) }
             }
 
+            if (model.isFeatured) {
+                if (model.recommendations.isNotEmpty()) {
+                    item {
+                        val highlights = model.recommendations.take(8)
+                        val pager = rememberPagerState { highlights.size }
+                        SectionHeader("今日精选") { Text("${pager.currentPage + 1} / ${highlights.size}", fontSize = 11.sp, color = Text3) }
+                        HorizontalPager(pager, pageSpacing = 12.dp, key = { highlights[it].id }) { index ->
+                            val game = highlights[index]
+                            StoreGameCard(game, large = true, wished = game.id in wishIdSet,
+                                canWish = online && !wishBusy && game.id !in wishIdSet,
+                                onWish = { model.changeWishlist(game.id, true) }, onOpen = { model.details(game.id) },
+                                modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+                item {
+                    SectionHeader("折扣推荐") {
+                        TextLink("更多折扣") {
+                            query = ""
+                            model.searchOptions = StoreSearchOptions(discountOnly = true)
+                            model.search("", true)
+                        }
+                    }
+                }
+            }
+
+            if (!model.loading && ordered.isEmpty() && model.error.isEmpty() && wishError.isEmpty()) {
+                item {
+                    EmptyState(glyph = Glyph.Search, title = "没有符合条件的商品",
+                        body = "试着关掉一些筛选条件，或换一个中文游戏名。", action = "清除筛选",
+                        onAction = { model.searchOptions = StoreSearchOptions(); sortPrice = false; min = ""; max = ""; query = ""; model.search("", true) })
+                }
+            }
+            items(ordered.chunked(2), key = { "cards:${it.first().id}" }, contentType = { "game-cards" }) { row ->
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { game ->
+                        StoreGameCard(game, large = false, wished = game.id in wishIdSet,
+                            canWish = online && !wishBusy && game.id !in wishIdSet,
+                            onWish = { model.changeWishlist(game.id, true) }, onOpen = { model.details(game.id) }, modifier = Modifier.weight(1f))
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
             if (model.isFeatured) {
                 if (wishDiscounts.isNotEmpty()) {
                     item {
@@ -176,75 +221,6 @@ fun StoreScreen(model: LiteModel, onOpenWishlist: () -> Unit = {}) {
                         )
                     }
                 }
-                if (model.recommendations.isNotEmpty()) {
-                    item { SectionHeader("Steam 精选") }
-                    items(model.recommendations, key = { "featured:${it.id}" }, contentType = { "game" }) { game ->
-                        val inWishlist = game.id in wishIdSet
-                        GameRow(
-                            gameId = game.id, image = game.image, title = game.name,
-                            meta = "Steam 精选", price = game.price.ifBlank { "暂无报价" },
-                            discount = game.discount, original = game.original,
-                            onClick = { model.details(game.id) },
-                            trailing = {
-                                HeartButton(on = inWishlist, enabled = online && !wishBusy && !inWishlist) {
-                                    model.changeWishlist(game.id, true)
-                                }
-                            }
-                        )
-                    }
-                }
-                item {
-                    SectionHeader("折扣推荐") {
-                        TextLink("更多折扣") {
-                            query = ""
-                            model.searchOptions = StoreSearchOptions(discountOnly = true)
-                            model.search("", true)
-                        }
-                    }
-                }
-            }
-
-            if (!model.loading && ordered.isEmpty() && model.error.isEmpty() && wishError.isEmpty()) {
-                item {
-                    EmptyState(
-                        glyph = Glyph.Search,
-                        title = "没有符合条件的商品",
-                        body = "试着关掉一些筛选条件，或换一个中文游戏名。",
-                        action = "清除筛选",
-                        onAction = {
-                            model.searchOptions = StoreSearchOptions()
-                            sortPrice = false; min = ""; max = ""; query = ""
-                            model.search("", true)
-                        }
-                    )
-                }
-            }
-
-            items(ordered, key = { "store:${it.id}" }, contentType = { "game" }) { game ->
-                val inWishlist = game.id in wishIdSet
-                GameRow(
-                    gameId = game.id,
-                    image = game.image,
-                    title = game.name,
-                    meta = buildString {
-                        if (game.release.isNotBlank()) append(game.release)
-                        if (game.positivePercent != null) {
-                            if (isNotEmpty()) append(" · ")
-                            append("好评 ").append(game.positivePercent).append("%")
-                        }
-                        if (isEmpty()) append(if (game.discount > 0) "折扣中" else "Steam 商店")
-                    },
-                    price = game.price.ifBlank { "暂无报价" },
-                    discount = game.discount,
-                    original = game.original,
-                    onClick = { model.details(game.id) },
-                    showDivider = true,
-                    trailing = {
-                        HeartButton(on = inWishlist, enabled = online && !wishBusy && !inWishlist) {
-                            model.changeWishlist(game.id, true)
-                        }
-                    }
-                )
             }
 
             if (model.hasMoreResults) {

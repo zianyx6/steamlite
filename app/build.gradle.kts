@@ -40,6 +40,7 @@ androidComponents {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("com.google.zxing:core:3.5.4")
     implementation("org.jsoup:jsoup:1.24.1")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))

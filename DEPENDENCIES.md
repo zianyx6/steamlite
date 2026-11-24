@@ -36,6 +36,8 @@ Bouncy Castle bcprov-jdk18on 1.86 是 JavaSteam 必需的额外加密依赖，�
 
 测试依赖新增 JUnit 4.13.2（EPL-1.0），仅 testImplementation，不进入 APK。
 
+商店详情解析测试使用 org.json:json:20240303（JSON License），仅 testImplementation，不进入 APK。运行时继续使用 Android 自带的 JSONObject。
+
 
 基础通知使用 Android 平台 NotificationManager / NotificationChannel / PendingIntent 与既有 Activity Result API，无新增运行时第三方依赖。权限参考 https://developer.android.com/develop/ui/views/notifications/notification-permission 。
 
