@@ -36,6 +36,18 @@ CI 的 Debug APK 用于测试，签名与正式安装包不同，也不保证不
 
 ## 设备验证
 
+### 隐私化展示图
+
+`./gradlew assembleScreenshots` 生成独立包 `org.steamlite.screenshots`，使用正式界面组件与演示数据，不读取正式客户端的账号和数据库。该源码集不进入 Debug 或 Release APK。
+
+安装 `app/build/outputs/apk/screenshots/app-screenshots.apk` 后，可拍摄商店、个人主页、详情和会话：
+
+```sh
+adb shell am start -n org.steamlite.screenshots/org.steamlite.DemoScreenshotsActivity --es page profile --es theme dark
+```
+
+`page` 支持 `store`、`profile`、`detail`、`messages`；`theme` 支持 `dark`、`light`。手动 CI 运行勾选 `screenshots` 时会额外构建此演示程序，正常主分支构建不执行该步骤。
+
 JVM 测试包含图片解析、价格限流、消息标识、未读合并、好友菜单互斥及认证方式选择等回归。
 
 设备测试入口：
